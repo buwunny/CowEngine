@@ -9,7 +9,9 @@ set(SOURCES
     src/meshes/PlaneMesh.cpp
     src/meshes/CubeMesh.cpp
     src/meshes/CircleMesh.cpp
+    src/meshes/StaticMesh.cpp
     src/objects/Cube.cpp
+    src/objects/StaticObject.cpp
     src/objects/Plane.cpp
     src/objects/Player.cpp
     src/rooms/BasicRoom.cpp

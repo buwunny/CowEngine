@@ -11,6 +11,8 @@
 #include "Camera.hpp"
 #include "InputHandler.hpp"
 #include "Window.hpp"
+#include "objects/StaticObject.hpp"
+#include "../../cow_mesh.hpp"
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -34,7 +36,7 @@ int main()
     // Create and populate objects safely. Use push_back so vector has
     // valid elements and iterate over the vector when using them.
     std::vector<Object *> objects;
-    int numObjects = 100;
+    int numObjects = 50;
     objects.reserve(numObjects);
 
     // Create a few larger/static cubes first (heap-allocated so they live)
@@ -49,7 +51,8 @@ int main()
         float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
         float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        objects.push_back(new Cube(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f + i * 3.0f, 0.0f)), glm::vec4(r, g, b, 1.0f), 1.0f));
+        // objects.push_back(new Cube(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f + i * 3.0f, 0.0f)), glm::vec4(r, g, b, 1.0f), 1.0f));
+        objects.push_back(new StaticObject(cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 5.0f)), glm::vec4(r, g, b, 1.0f), 1.0f));
     }
 
     // Add all created objects to the physics world

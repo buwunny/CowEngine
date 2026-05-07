@@ -1,8 +1,10 @@
 #include "rooms/BasicRoom.hpp"
+#include "objects/StaticObject.hpp"
+#include "../../cow_mesh.hpp"
 
 BasicRoom::BasicRoom(glm::vec3 position, glm::vec3 front, glm::vec3 up)
 {
-    Plane *ground = new Plane(100, 100, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)), glm::vec4(0.60f, 0.60f, 0.60f, 1.0f), 0.0f);
+    Plane *ground = new Plane(1000, 1000, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)), glm::vec4(0.60f, 0.60f, 0.60f, 1.0f), 0.0f);
     // Plane *ceiling = new Plane(100, 100, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 50.0f, 0.0f)), glm::vec4(0.95f, 0.95f, 0.96f, 1.0f), 0.0f);
     Plane *plane1 = new Plane(50, 45, glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, 25.0f, 27.5f)), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)), glm::vec4(0.80f, 0.90f, 0.95f, 1.0f), 0.0f);
     Plane *plane2 = new Plane(50, 45, glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, 25.0f, -27.5f)), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)), glm::vec4(0.80f, 0.90f, 0.95f, 1.0f), 0.0f);
@@ -26,6 +28,9 @@ BasicRoom::BasicRoom(glm::vec3 position, glm::vec3 front, glm::vec3 up)
     objects.push_back(cube1);
     objects.push_back(cube2);
     objects.push_back(cube3);
+
+    StaticObject *cow = new StaticObject(cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 5.0f)), glm::vec4(0.8f, 0.6f, 0.5f, 1.0f), 1.0f);
+    objects.push_back(cow);
 }
 
 BasicRoom::~BasicRoom()

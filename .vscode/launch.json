@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run OpenGLProject (Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/OpenGLProject",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "preLaunchTask": "cmake-build"
+        }
+    ]
+}

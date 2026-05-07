@@ -12,7 +12,6 @@
                 "/usr/include/bullet",
                 "/usr/include/glm"
             ],
-            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
             "defines": [],
             "compilerPath": "/usr/bin/g++",
             "cStandard": "c11",
