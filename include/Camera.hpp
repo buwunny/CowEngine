@@ -1,11 +1,12 @@
 #ifndef CAMERA_HPP
 #define CAMERA_HPP
 
-#include <GL/glew.h>
+#include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-class Camera {
+class Camera
+{
 public:
     Camera(glm::vec3 position, glm::vec3 front, glm::vec3 up);
     ~Camera();
@@ -22,6 +23,7 @@ public:
     void setUp(glm::vec3 up) { this->up = up; };
 
     void look(float xoffset, float yoffset);
+
 private:
     glm::vec3 position;
     glm::vec3 front;
@@ -29,6 +31,5 @@ private:
     float yaw;
     float pitch;
     float sensitivity = 0.1f;
-
 };
 #endif // CAMERA_HPP

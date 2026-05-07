@@ -1,10 +1,11 @@
-#include "../../include/objects/Player.hpp"
+#include "objects/Player.hpp"
 
-Player::Player(Camera* camera, glm::mat4 model) {
+Player::Player(Camera *camera, glm::mat4 model)
+{
     mass = 10.0f;
     movementSpeed = 100.0f;
-    lastX = 1920/2;
-    lastY = 1080/2;
+    lastX = 1920 / 2;
+    lastY = 1080 / 2;
     firstMouse = true;
     this->camera = camera;
     inputHandler = new InputHandler(camera);
@@ -14,7 +15,7 @@ Player::Player(Camera* camera, glm::mat4 model) {
 
     btTransform transform;
     transform.setFromOpenGLMatrix(glm::value_ptr(model));
-    btDefaultMotionState* motionState = new btDefaultMotionState(transform);
+    btDefaultMotionState *motionState = new btDefaultMotionState(transform);
 
     btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState, collisionShape, localInertia);
     rigidBody = new btRigidBody(rbInfo);
@@ -26,13 +27,15 @@ Player::Player(Camera* camera, glm::mat4 model) {
     rigidBody->setFriction(1.0f);
 }
 
-Player::~Player() {
+Player::~Player()
+{
     delete inputHandler;
     delete collisionShape;
     delete rigidBody;
 }
 
-bool Player::isOnGround(btDiscreteDynamicsWorld* dynamicsWorld) {
+bool Player::isOnGround(btDiscreteDynamicsWorld *dynamicsWorld)
+{
     btVector3 start = rigidBody->getWorldTransform().getOrigin();
     btVector3 end = start - btVector3(0, 1.05f, 0);
     btCollisionWorld::ClosestRayResultCallback rayCallback(start, end);
@@ -40,7 +43,8 @@ bool Player::isOnGround(btDiscreteDynamicsWorld* dynamicsWorld) {
     return rayCallback.hasHit();
 }
 
-void Player::processInput(Window *window, float deltaTime, btDiscreteDynamicsWorld* dynamicsWorld) {
+void Player::processInput(Window *window, float deltaTime, btDiscreteDynamicsWorld *dynamicsWorld)
+{
     float cameraSpeed = movementSpeed * deltaTime;
 
     btVector3 velocity = rigidBody->getLinearVelocity();
@@ -57,7 +61,7 @@ void Player::processInput(Window *window, float deltaTime, btDiscreteDynamicsWor
     if (window->isKeyPressed(GLFW_KEY_A))
         velocity -= rightDir * adjustedSpeed;
     if (window->isKeyPressed(GLFW_KEY_D))
-        velocity += rightDir * adjustedSpeed; 
+        velocity += rightDir * adjustedSpeed;
     if (window->isKeyPressed(GLFW_KEY_ESCAPE))
         window->close();
     if (window->isKeyPressed(GLFW_KEY_SPACE) && isOnGround)
@@ -67,7 +71,8 @@ void Player::processInput(Window *window, float deltaTime, btDiscreteDynamicsWor
     float maxSpeed = 10.0f;
     if (window->isKeyPressed(GLFW_KEY_LEFT_SHIFT))
         maxSpeed *= 2;
-    if (velocity.length() > maxSpeed) {
+    if (velocity.length() > maxSpeed)
+    {
         velocity = velocity.normalized() * maxSpeed;
     }
     rigidBody->setLinearVelocity(velocity);
@@ -78,8 +83,10 @@ void Player::processInput(Window *window, float deltaTime, btDiscreteDynamicsWor
     camera->setPosition(glm::vec3(pos.getX(), pos.getY() + 1.0f, pos.getZ()));
 }
 
-void Player::processMouse(float xpos, float ypos) {
-    if (firstMouse) {
+void Player::processMouse(float xpos, float ypos)
+{
+    if (firstMouse)
+    {
         lastX = xpos;
         lastY = ypos;
         firstMouse = false;
@@ -89,13 +96,15 @@ void Player::processMouse(float xpos, float ypos) {
     float yoffset = lastY - ypos;
     lastX = xpos;
     lastY = ypos;
-    
+
     this->camera->look(xoffset, yoffset);
 }
 
-void Player::mouse_callback(GLFWwindow* window, double xpos, double ypos) {
-    Player* player = static_cast<Player*>(glfwGetWindowUserPointer(window));
-    if (player) {
+void Player::mouse_callback(GLFWwindow *window, double xpos, double ypos)
+{
+    Player *player = static_cast<Player *>(glfwGetWindowUserPointer(window));
+    if (player)
+    {
         player->processMouse(xpos, ypos);
     }
 }

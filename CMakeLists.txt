@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(OpenGLProject)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 set(SOURCES
     src/main.cpp
@@ -20,16 +20,25 @@ set(SOURCES
 
 add_executable(OpenGLProject ${SOURCES})
 
-set(CMAKE_PREFIX_PATH "C:/msys64/mingw64")
+if(WIN32)
+    set(CMAKE_PREFIX_PATH "C:/msys64/mingw64")
+endif()
 
 find_package(Bullet REQUIRED)
-find_package(GLEW REQUIRED)
-find_package(GLFW3 REQUIRED)
+find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
+if(EXISTS ${CMAKE_SOURCE_DIR}/glad/include/glad/glad.h AND EXISTS ${CMAKE_SOURCE_DIR}/glad/src/glad.c)
+    add_library(glad STATIC ${CMAKE_SOURCE_DIR}/glad/src/glad.c)
+    target_include_directories(glad PUBLIC ${CMAKE_SOURCE_DIR}/glad/include)
+else()
+    find_package(glad CONFIG REQUIRED)
+endif()
+find_package(OpenGL REQUIRED)
 
-include_directories(${BULLET_INCLUDE_DIRS})
+target_include_directories(OpenGLProject PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
 
-target_link_libraries(OpenGLProject PRIVATE ${BULLET_LIBRARIES} GLEW::GLEW glfw glm)
+target_link_libraries(OpenGLProject PRIVATE ${BULLET_LIBRARIES} glad glfw glm OpenGL::GL)
+
 
 add_custom_command(TARGET OpenGLProject POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

@@ -1,66 +1,67 @@
-#include <GL/glew.h>
 #include <iostream>
 
-#include <btBulletDynamicsCommon.h>
-#include <btBulletCollisionCommon.h>
+#include <bullet/btBulletDynamicsCommon.h>
+#include <bullet/btBulletCollisionCommon.h>
 
-#include "../include/Shader.hpp"
-#include "../include/objects/Cube.hpp"
-#include "../include/objects/Plane.hpp"
-#include "../include/objects/Player.hpp"
-#include "../include/rooms/BasicRoom.hpp"
-#include "../include/Camera.hpp"
-#include "../include/InputHandler.hpp"
-#include "../include/Window.hpp"
+#include "Shader.hpp"
+#include "objects/Cube.hpp"
+#include "objects/Plane.hpp"
+#include "objects/Player.hpp"
+#include "rooms/BasicRoom.hpp"
+#include "Camera.hpp"
+#include "InputHandler.hpp"
+#include "Window.hpp"
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 int main()
 {
-    btDefaultCollisionConfiguration* collisionConfiguration = new btDefaultCollisionConfiguration();
-    btCollisionDispatcher* dispatcher = new btCollisionDispatcher(collisionConfiguration);
-    btBroadphaseInterface* overlappingPairCache = new btDbvtBroadphase();
-    btSequentialImpulseConstraintSolver* solver = new btSequentialImpulseConstraintSolver();
-    btDiscreteDynamicsWorld* dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
-    dynamicsWorld->setGravity(btVector3(0, -9.81*2, 0));
+    btDefaultCollisionConfiguration *collisionConfiguration = new btDefaultCollisionConfiguration();
+    btCollisionDispatcher *dispatcher = new btCollisionDispatcher(collisionConfiguration);
+    btBroadphaseInterface *overlappingPairCache = new btDbvtBroadphase();
+    btSequentialImpulseConstraintSolver *solver = new btSequentialImpulseConstraintSolver();
+    btDiscreteDynamicsWorld *dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
+    dynamicsWorld->setGravity(btVector3(0, -9.81 * 2, 0));
 
     Window window(1920, 1080, "Spinning Cube");
     Camera playerCamera(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
     Player player(&playerCamera, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 10.0f)));
     glfwSetWindowUserPointer(window.getWindow(), &player);
-    glfwSetCursorPosCallback(window.getWindow(), player.mouse_callback);    
-    
-    std::vector<Object> objects;
+    glfwSetCursorPosCallback(window.getWindow(), player.mouse_callback);
 
-    // for (int i = 10; i < numObjects; i++)
-    // {
-    //     float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-    //     float g = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-    //     float b = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-    //     objects[i] = new Cube(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f + i * 3.0f, 0.0f)), glm::vec4(r, g, b, 1.0f), 1.0f);
-    // }
+    // Create and populate objects safely. Use push_back so vector has
+    // valid elements and iterate over the vector when using them.
+    std::vector<Object *> objects;
+    int numObjects = 100;
+    objects.reserve(numObjects);
 
-    // Cube cube1(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f);
-    // Cube cube2(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f)), glm::vec4(0.0f, 0.5f, 0.5f, 1.0f), 1.0f);
-    // Cube cube3(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 6.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.0f, 1.0f), 1.0f);
-    // Cube cube4(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 9.0f, 0.0f)), glm::vec4(0.5f, 0.0f, 0.5f, 1.0f), 1.0f);
-    // objects[1] = &cube1;
-    // objects[2] = &cube2;
-    // objects[3] = &cube3;
-    // objects[4] = &cube4;
+    // Create a few larger/static cubes first (heap-allocated so they live)
+    objects.push_back(new Cube(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
+    objects.push_back(new Cube(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f)), glm::vec4(0.0f, 0.5f, 0.5f, 1.0f), 1.0f));
+    objects.push_back(new Cube(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 6.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.0f, 1.0f), 1.0f));
+    objects.push_back(new Cube(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 9.0f, 0.0f)), glm::vec4(0.5f, 0.0f, 0.5f, 1.0f), 1.0f));
 
+    // Fill remaining objects (start at index 4)
+    for (int i = 4; i < numObjects; i++)
+    {
+        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        objects.push_back(new Cube(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f + i * 3.0f, 0.0f)), glm::vec4(r, g, b, 1.0f), 1.0f));
+    }
 
-    // for (int i = 0; i < numObjects; i++)
-    // {
-    //     dynamicsWorld->addRigidBody(objects[i]->getRigidBody());
-    // }
+    // Add all created objects to the physics world
+    for (auto obj : objects)
+    {
+        if (obj)
+            dynamicsWorld->addRigidBody(obj->getRigidBody());
+    }
 
     BasicRoom room(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     room.addRigidBodiesToWorld(dynamicsWorld);
     dynamicsWorld->addRigidBody(player.getRigidBody());
-
 
     Shader shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
 
@@ -72,7 +73,7 @@ int main()
 
         dynamicsWorld->stepSimulation(deltaTime, 10);
 
-        player.processInput(&window, deltaTime, dynamicsWorld);    
+        player.processInput(&window, deltaTime, dynamicsWorld);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -85,21 +86,23 @@ int main()
         shader.setViewMatrix(view);
         shader.setProjectionMatrix(projection);
 
-        // for (int i = 0; i < numObjects; i++)
-        // {
-        //     btTransform trans;
-        //     objects[i]->getRigidBody()->getMotionState()->getWorldTransform(trans);
-        //     btScalar matrix[16];
-        //     trans.getOpenGLMatrix(matrix);
-        //     glm::mat4 modelMatrix = glm::make_mat4(matrix);
-        //     objects[i]->setModel(modelMatrix);
-        //     objects[i]->render(window, shader);
-        // }
+        for (auto obj : objects)
+        {
+            if (!obj)
+                continue;
+            btTransform trans;
+            obj->getRigidBody()->getMotionState()->getWorldTransform(trans);
+            btScalar matrix[16];
+            trans.getOpenGLMatrix(matrix);
+            glm::mat4 modelMatrix = glm::make_mat4(matrix);
+            obj->setModel(modelMatrix);
+            obj->render(window, shader);
+        }
 
         player.update();
         room.update();
         room.render(window, shader);
-        
+
         window.update();
     }
 
