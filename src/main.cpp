@@ -1,4 +1,7 @@
 #include <iostream>
+#include <sstream>
+#include <iomanip>
+#include <string>
 
 #include <bullet/btBulletDynamicsCommon.h>
 #include <bullet/btBulletCollisionCommon.h>
@@ -68,11 +71,29 @@ int main()
 
     Shader shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
 
+    // FPS counter: frames and accumulated time
+    int fpsCount = 0;
+    double fpsTimer = 0.0;
+
     while (!window.shouldClose())
     {
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+        // Update FPS counters and window title periodically
+        fpsCount++;
+        fpsTimer += deltaTime;
+        if (fpsTimer >= 0.5)
+        {
+            double fps = fpsCount / fpsTimer;
+            std::ostringstream oss;
+            oss << "OpenGLProject - FPS: " << std::fixed << std::setprecision(1) << fps;
+            std::string title = oss.str();
+            glfwSetWindowTitle(window.getWindow(), title.c_str());
+            fpsCount = 0;
+            fpsTimer = 0.0;
+        }
 
         dynamicsWorld->stepSimulation(deltaTime, 10);
 
