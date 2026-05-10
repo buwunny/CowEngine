@@ -22,6 +22,7 @@ Window::Window(int width, int height, const char *title)
 
     glfwMakeContextCurrent(window);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    cursorDisabled = true;
 
     // Initialize GL function loader after creating the OpenGL context (glad).
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -44,6 +45,19 @@ void Window::update()
 {
     glfwSwapBuffers(window);
     glfwPollEvents();
+}
+
+bool Window::toggleCursor()
+{
+    cursorDisabled = !cursorDisabled;
+    glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+    return cursorDisabled;
+}
+
+void Window::setCursorDisabled(bool disabled)
+{
+    cursorDisabled = disabled;
+    glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
 }
 
 void Window::framebuffer_size_callback(GLFWwindow *window, int width, int height)

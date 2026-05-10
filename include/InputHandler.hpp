@@ -9,16 +9,18 @@
 #include <glm/glm.hpp>
 #include <btBulletDynamicsCommon.h>
 
-class InputHandler {
+class InputHandler
+{
 public:
-    InputHandler(Camera* camera);
+    InputHandler(Camera *camera);
     ~InputHandler();
 
     void processInput(Window *window, float deltaTime);
     void processMouse(float xpos, float ypos);
-    static void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+    static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
+
 private:
-    Camera* camera;
+    Camera *camera;
     float movementSpeed;
     float lastX, lastY;
     bool firstMouse;

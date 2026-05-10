@@ -27,6 +27,7 @@ public:
     bool loadFromJSON(const std::string &path);
     bool saveToJSON(const std::string &path);
     void checkReload();
+    void forceReload();
 
     void addPlayer(std::unique_ptr<Player> player, Window *window, PhysicsWorld &physics);
     Player *getPlayer() { return player.get(); }
@@ -35,6 +36,7 @@ public:
     {
         for (auto &obj : objects)
             physics.addRigidBody(obj->getRigidBody());
+        physicsWorld = &physics;
     }
 
     void update()
@@ -68,6 +70,9 @@ private:
     std::unique_ptr<Player> player;
     std::string scenePath;
     std::filesystem::file_time_type lastWriteTime;
+    PhysicsWorld *physicsWorld = nullptr;
+    std::chrono::steady_clock::time_point lastAutoReloadTime = std::chrono::steady_clock::time_point::min();
+    std::chrono::milliseconds reloadDebounce{500};
 };
 
 #endif // SCENE_HPP

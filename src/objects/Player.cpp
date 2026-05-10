@@ -7,6 +7,7 @@ Player::Player(Camera *camera, glm::mat4 model)
     lastX = 1920 / 2;
     lastY = 1080 / 2;
     firstMouse = true;
+    lastTabPressed = false;
     this->camera = camera;
     inputHandler = std::make_unique<InputHandler>(camera);
     collisionShape = std::make_unique<btCapsuleShape>(0.5f, 1.0f);
@@ -38,6 +39,20 @@ bool Player::isOnGround(PhysicsWorld *physics)
 
 void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics)
 {
+    // Handle Tab toggle first so we can relock even when cursor is currently unlocked
+    bool tab = window->isKeyPressed(GLFW_KEY_TAB);
+    if (tab && !lastTabPressed)
+    {
+        bool disabled = window->toggleCursor();
+        if (!disabled)
+            firstMouse = true; // reset mouse so movement doesn't jump when re-enabled
+    }
+    lastTabPressed = tab;
+
+    // If cursor is unlocked (normal), don't process movement or mouse control
+    if (!window->isCursorDisabled())
+        return;
+
     float cameraSpeed = movementSpeed * deltaTime;
 
     btVector3 velocity = rigidBody->getLinearVelocity();
@@ -93,11 +108,20 @@ void Player::processMouse(float xpos, float ypos)
     this->camera->look(xoffset, yoffset);
 }
 
+void Player::resetInputState()
+{
+    firstMouse = true;
+    lastTabPressed = false;
+}
+
 void Player::mouse_callback(GLFWwindow *window, double xpos, double ypos)
 {
     Player *player = static_cast<Player *>(glfwGetWindowUserPointer(window));
-    if (player)
-    {
-        player->processMouse(xpos, ypos);
-    }
+    if (!player)
+        return;
+    // Only process mouse movement when cursor is disabled (captured)
+    int mode = glfwGetInputMode(window, GLFW_CURSOR);
+    if (mode != GLFW_CURSOR_DISABLED)
+        return;
+    player->processMouse(xpos, ypos);
 }

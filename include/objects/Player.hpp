@@ -24,6 +24,7 @@ public:
     void render(Window &window, Shader &shader) {};
     void renderTransparent(Window &window, Shader &shader) {};
     void renderFill(Window &window, Shader &shader) {};
+    void resetInputState();
 
 private:
     Camera *camera;
@@ -32,5 +33,6 @@ private:
     float movementSpeed;
     float lastX, lastY;
     bool firstMouse;
+    bool lastTabPressed;
 };
 #endif // PLAYER_HPP

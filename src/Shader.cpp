@@ -1,11 +1,26 @@
 #include "Shader.hpp"
+#include <filesystem>
 
 Shader::Shader(const std::string vertexShaderPath, const std::string fragmentShaderPath)
 {
     std::string vertexShaderSourceStr = readFile(vertexShaderPath);
-    const char *vertexShaderSource = vertexShaderSourceStr.c_str();
-
     std::string fragmentShaderSourceStr = readFile(fragmentShaderPath);
+    // Fallback embedded shader sources to avoid runtime file dependency
+    static const char *DEFAULT_VERTEX = "#version 330 core\nlayout (location = 0) in vec3 aPos;\nuniform mat4 model;\nuniform mat4 view;\nuniform mat4 projection;\nvoid main() { gl_Position = projection * view * model * vec4(aPos, 1.0); }\n";
+    static const char *DEFAULT_FRAGMENT = "#version 330 core\nout vec4 FragColor;\nuniform vec4 wireframeColor;\nvoid main() { FragColor = wireframeColor; }\n";
+
+    if (vertexShaderSourceStr.empty())
+    {
+        std::cerr << "Shader: using embedded default vertex shader for '" << vertexShaderPath << "'" << std::endl;
+        vertexShaderSourceStr = DEFAULT_VERTEX;
+    }
+    if (fragmentShaderSourceStr.empty())
+    {
+        std::cerr << "Shader: using embedded default fragment shader for '" << fragmentShaderPath << "'" << std::endl;
+        fragmentShaderSourceStr = DEFAULT_FRAGMENT;
+    }
+
+    const char *vertexShaderSource = vertexShaderSourceStr.c_str();
     const char *fragmentShaderSource = fragmentShaderSourceStr.c_str();
 
     ID = compileShaders(vertexShaderSource, fragmentShaderSource);
@@ -89,8 +104,33 @@ unsigned int Shader::compileShaders(const char *vertexShaderSource, const char *
 
 std::string Shader::readFile(const std::string filePath)
 {
-    std::ifstream file(filePath);
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
+    namespace fs = std::filesystem;
+    std::vector<fs::path> candidates;
+    candidates.emplace_back(filePath);
+#ifdef ASSET_ROOT
+    candidates.emplace_back(fs::path(ASSET_ROOT) / filePath);
+#endif
+    candidates.emplace_back(fs::path("./") / filePath);
+    candidates.emplace_back(fs::path("../") / filePath);
+    candidates.emplace_back(fs::path("../src/") / filePath);
+    candidates.emplace_back(fs::path("../shaders/") / fs::path(filePath).filename());
+    candidates.emplace_back(fs::path("src/shaders/") / fs::path(filePath).filename());
+    candidates.emplace_back(fs::path("shaders/") / fs::path(filePath).filename());
+
+    for (auto &c : candidates)
+    {
+        if (c.empty())
+            continue;
+        std::ifstream file(c);
+        if (file)
+        {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            std::cerr << "Shader: loaded shader from: " << c << std::endl;
+            return buffer.str();
+        }
+    }
+
+    std::cerr << "Shader: failed to open shader file (tried candidates) : " << filePath << std::endl;
+    return std::string();
 }

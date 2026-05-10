@@ -100,9 +100,18 @@ bool Scene::loadFromJSON(const std::string &path)
         return false;
     }
 
-    // Clear current scene
+    // If we have a physics world recorded, remove rigid bodies for current objects (but keep player)
+    if (physicsWorld)
+    {
+        for (auto &o : objects)
+        {
+            if (o->getRigidBody())
+                physicsWorld->removeRigidBody(o->getRigidBody());
+        }
+    }
+
+    // Clear current objects but preserve player across reloads
     objects.clear();
-    player.reset();
 
     // Parse objects array
     if (j.contains("objects") && j["objects"].is_array())
@@ -237,6 +246,19 @@ bool Scene::loadFromJSON(const std::string &path)
         }
     }
 
+    // After constructing objects, add their rigid bodies to the physics world if we have one
+    if (physicsWorld)
+    {
+        for (auto &o : objects)
+        {
+            if (o->getRigidBody())
+                physicsWorld->addRigidBody(o->getRigidBody());
+        }
+        // Reset player input state so edge-detect keys are consistent after reload
+        if (player)
+            player->resetInputState();
+    }
+
     // Player block (optional)
     if (j.contains("player") && j["player"].is_object())
     {
@@ -318,9 +340,30 @@ void Scene::checkReload()
     auto t = fs::last_write_time(p);
     if (t != lastWriteTime)
     {
+        auto now = std::chrono::steady_clock::now();
+        if ((now - lastAutoReloadTime) < reloadDebounce)
+        {
+            // debounce: skip reload if triggered too recently
+            return;
+        }
+        lastAutoReloadTime = now;
         std::cerr << "Scene: detected change in " << scenePath << ", reloading." << std::endl;
         loadFromJSON(scenePath);
     }
+}
+
+void Scene::forceReload()
+{
+    if (scenePath.empty())
+        return;
+    namespace fs = std::filesystem;
+    fs::path p(scenePath);
+    if (!fs::exists(p))
+        return;
+    std::cerr << "Scene: force reload requested for " << scenePath << std::endl;
+    loadFromJSON(scenePath);
+    // update auto-reload timestamp to avoid immediate auto-reloads
+    lastAutoReloadTime = std::chrono::steady_clock::now();
 }
 
 void Scene::addPlayer(std::unique_ptr<Player> pl, Window *window, PhysicsWorld &physics)
@@ -337,4 +380,6 @@ void Scene::addPlayer(std::unique_ptr<Player> pl, Window *window, PhysicsWorld &
     // add rigid body to physics
     if (player->getRigidBody())
         physics.addRigidBody(player->getRigidBody());
+    // remember physics world for later reload cleanup
+    physicsWorld = &physics;
 }

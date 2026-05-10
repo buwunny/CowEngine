@@ -49,8 +49,17 @@ int main()
     int fpsCount = 0;
     double fpsTimer = 0.0;
 
+    bool lastRPressed = false;
     while (!window.shouldClose())
     {
+        // Manual reload key (R) edge-detect
+        bool r = window.isKeyPressed(GLFW_KEY_R);
+        if (r && !lastRPressed)
+        {
+            scene.forceReload();
+        }
+        lastRPressed = r;
+
         // Check for scene file changes and reload if needed
         scene.checkReload();
         float currentFrame = glfwGetTime();
