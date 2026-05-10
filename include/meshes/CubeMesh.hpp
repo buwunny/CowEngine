@@ -3,10 +3,11 @@
 
 #include "Mesh.hpp"
 
-class CubeMesh : public Mesh {
+class CubeMesh : public Mesh
+{
 public:
     CubeMesh(int size);
-    ~CubeMesh();
+    ~CubeMesh() = default;
 
     void render();
 };

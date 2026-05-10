@@ -39,13 +39,6 @@ CircleMesh::CircleMesh(int radius)
     glEnableVertexAttribArray(0);
 }
 
-CircleMesh::~CircleMesh()
-{
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
-}
-
 void CircleMesh::render()
 {
     glBindVertexArray(VAO);

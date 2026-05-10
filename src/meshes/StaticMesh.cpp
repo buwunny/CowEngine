@@ -4,6 +4,7 @@
 
 StaticMesh::StaticMesh(const float *verts, size_t vertex_count, const unsigned int *inds, size_t index_count, int floats_per_vertex)
 {
+    this->floats_per_vertex = floats_per_vertex;
     // Copy into vectors
     vertices.assign(verts, verts + vertex_count * floats_per_vertex);
     indices.assign(inds, inds + index_count);
@@ -56,16 +57,6 @@ StaticMesh::StaticMesh(const float *verts, size_t vertex_count, const unsigned i
     }
 
     glBindVertexArray(0);
-}
-
-StaticMesh::~StaticMesh()
-{
-    if (EBO)
-        glDeleteBuffers(1, &EBO);
-    if (VBO)
-        glDeleteBuffers(1, &VBO);
-    if (VAO)
-        glDeleteVertexArrays(1, &VAO);
 }
 
 void StaticMesh::render()

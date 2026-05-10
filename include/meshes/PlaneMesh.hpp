@@ -3,10 +3,11 @@
 
 #include "Mesh.hpp"
 
-class PlaneMesh : public Mesh {
+class PlaneMesh : public Mesh
+{
 public:
     PlaneMesh(float x, float z, int xSubdivisions, int zSubdivisions);
-    ~PlaneMesh();
+    ~PlaneMesh() = default;
 
     void render();
 };

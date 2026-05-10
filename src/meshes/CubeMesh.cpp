@@ -41,13 +41,6 @@ CubeMesh::CubeMesh(int size)
     glEnableVertexAttribArray(1);
 }
 
-CubeMesh::~CubeMesh()
-{
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
-}
-
 void CubeMesh::render()
 {
     glBindVertexArray(VAO);

@@ -1,0 +1,117 @@
+{
+    "objects": [
+        {
+            "type": "Plane",
+            "length": 1000.0,
+            "width": 1000.0,
+            "position": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "color": [
+                0.6,
+                0.6,
+                0.6,
+                1.0
+            ],
+            "mass": 0.0
+        },
+        {
+            "type": "Cube",
+            "size": 2,
+            "position": [
+                0.0,
+                1.0,
+                0.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                5.0,
+                5.0,
+                5.0
+            ],
+            "color": "#FF3333",
+            "mass": 1.0
+        },
+        {
+            "type": "Cube",
+            "size": 2,
+            "position": [
+                2.0,
+                1.0,
+                0.0
+            ],
+            "rotation": [
+                0.0,
+                15.0,
+                0.0
+            ],
+            "scale": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "color": "#33FF33",
+            "mass": 1.0
+        },
+        {
+            "type": "StaticObject",
+            "mesh": "models/cow.obj",
+            "mesh_name": "cow",
+            "position": [
+                5.0,
+                5.0,
+                5.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                10.0,
+                10.0,
+                10.0
+            ],
+            "color": "#C88F7F",
+            "mass": 100.0
+        },
+        {
+            "type": "StaticObject",
+            "mesh": "models/cow.obj",
+            "mesh_name": "cow2",
+            "position": [
+                -5.0,
+                10.0,
+                -5.0
+            ],
+            "rotation": [
+                45.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "color": "#7FBCE6",
+            "mass": 0.0
+        }
+    ]
+}

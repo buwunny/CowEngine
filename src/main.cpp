@@ -11,12 +11,12 @@
 #include "objects/Cube.hpp"
 #include "objects/Plane.hpp"
 #include "objects/Player.hpp"
-#include "rooms/BasicRoom.hpp"
 #include "Camera.hpp"
 #include "InputHandler.hpp"
 #include "Window.hpp"
 #include "objects/StaticObject.hpp"
-#include "../../cow_mesh.hpp"
+#include "Scene.hpp"
+#include "meshes/AssetManager.hpp"
 #include <memory>
 
 float deltaTime = 0.0f;
@@ -29,42 +29,19 @@ int main()
     Window window(1920, 1080, "Spinning Cube");
     Camera playerCamera(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    Player player(&playerCamera, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 10.0f)));
-    glfwSetWindowUserPointer(window.getWindow(), &player);
-    glfwSetCursorPosCallback(window.getWindow(), player.mouse_callback);
+    // Create player via Scene so Scene owns it and registers callbacks
+    // Player will be created and registered below after scene population
 
-    // Create and populate objects safely. Use push_back so vector has
-    // valid elements and iterate over the vector when using them.
-    std::vector<std::unique_ptr<Object>> objects;
-    int numObjects = 50;
-    objects.reserve(numObjects);
+    // Create scene and populate default objects (or load from scene.json)
+    Scene scene;
+    if (!scene.loadFromJSON("scenes/scene.json"))
+        scene.populateDefault();
+    scene.addRigidBodiesToWorld(physics);
 
-    // Create a few larger/static cubes first (heap-allocated so they live)
-    objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
-    objects.push_back(std::make_unique<Cube>(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f)), glm::vec4(0.0f, 0.5f, 0.5f, 1.0f), 1.0f));
-    objects.push_back(std::make_unique<Cube>(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 6.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.0f, 1.0f), 1.0f));
-    objects.push_back(std::make_unique<Cube>(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 9.0f, 0.0f)), glm::vec4(0.5f, 0.0f, 0.5f, 1.0f), 1.0f));
+    // Create and register player with the scene
+    scene.addPlayer(std::make_unique<Player>(&playerCamera, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 10.0f))), &window, physics);
 
-    // Fill remaining objects (start at index 4)
-    for (int i = 4; i < numObjects; i++)
-    {
-        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        // objects.push_back(new Cube(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f + i * 3.0f, 0.0f)), glm::vec4(r, g, b, 1.0f), 1.0f));
-        objects.push_back(std::make_unique<StaticObject>(cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 5.0f)), glm::vec4(r, g, b, 1.0f), 1.0f));
-    }
-
-    // Add all created objects to the physics world
-    for (auto &obj : objects)
-    {
-        if (obj)
-            physics.addRigidBody(obj->getRigidBody());
-    }
-
-    BasicRoom room(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    room.addRigidBodiesToWorld(physics);
-    physics.addRigidBody(player.getRigidBody());
+    // BasicRoom logic moved into Scene::populateDefault()
 
     Shader shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
 
@@ -74,6 +51,8 @@ int main()
 
     while (!window.shouldClose())
     {
+        // Check for scene file changes and reload if needed
+        scene.checkReload();
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
@@ -94,7 +73,8 @@ int main()
 
         physics.stepSimulation(deltaTime, 10);
 
-        player.processInput(&window, deltaTime, &physics);
+        if (scene.getPlayer())
+            scene.getPlayer()->processInput(&window, deltaTime, &physics);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -107,22 +87,10 @@ int main()
         shader.setViewMatrix(view);
         shader.setProjectionMatrix(projection);
 
-        for (auto &obj : objects)
-        {
-            if (!obj)
-                continue;
-            btTransform trans;
-            obj->getRigidBody()->getMotionState()->getWorldTransform(trans);
-            btScalar matrix[16];
-            trans.getOpenGLMatrix(matrix);
-            glm::mat4 modelMatrix = glm::make_mat4(matrix);
-            obj->setModel(modelMatrix);
-            obj->render(window, shader);
-        }
+        scene.update();
+        scene.render(window, shader);
 
-        player.update();
-        room.update();
-        room.render(window, shader);
+        // player is updated by scene.update(); scene contains room objects
 
         window.update();
     }

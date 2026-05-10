@@ -6,10 +6,11 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
-class CircleMesh : public Mesh {
+class CircleMesh : public Mesh
+{
 public:
     CircleMesh(int radius);
-    ~CircleMesh();
+    ~CircleMesh() = default;
 
     void render();
 };

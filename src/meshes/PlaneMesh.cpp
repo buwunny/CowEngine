@@ -55,13 +55,6 @@ PlaneMesh::PlaneMesh(float x, float z, int xSubdivisions, int zSubdivisions)
     glEnableVertexAttribArray(0);
 }
 
-PlaneMesh::~PlaneMesh()
-{
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
-}
-
 void PlaneMesh::render()
 {
     glBindVertexArray(VAO);

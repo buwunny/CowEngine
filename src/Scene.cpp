@@ -1,0 +1,340 @@
+#include "Scene.hpp"
+#include "meshes/AssetManager.hpp"
+#include "../../cow_mesh.hpp"
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
+#include <filesystem>
+#include <iostream>
+#include <fstream>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
+
+void Scene::populateDefault()
+{
+    // Create some cubes
+    objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
+    objects.push_back(std::make_unique<Cube>(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f)), glm::vec4(0.0f, 0.5f, 0.5f, 1.0f), 1.0f));
+    objects.push_back(std::make_unique<Cube>(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 6.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.0f, 1.0f), 1.0f));
+    objects.push_back(std::make_unique<Cube>(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 9.0f, 0.0f)), glm::vec4(0.5f, 0.0f, 0.5f, 1.0f), 1.0f));
+
+    // Shared cow mesh
+    auto &assetManager = AssetManager::instance();
+    auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
+    if (!cowMesh)
+        cowMesh = assetManager.loadStaticMeshFromArrays("cow", cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3);
+
+    int numObjects = 50;
+    for (int i = 4; i < numObjects; i++)
+    {
+        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        objects.push_back(std::make_unique<StaticObject>(cowMesh, cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 5.0f)), glm::vec4(r, g, b, 1.0f), 1.0f));
+    }
+
+    // Add some room/floor objects
+    objects.push_back(std::make_unique<Plane>(1000, 1000, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)), glm::vec4(0.60f, 0.60f, 0.60f, 1.0f), 0.0f));
+
+    // Basic room walls and additional static objects
+    objects.push_back(std::make_unique<Plane>(50, 45, glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, 25.0f, 27.5f)), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)), glm::vec4(0.80f, 0.90f, 0.95f, 1.0f), 0.0f));
+    objects.push_back(std::make_unique<Plane>(50, 45, glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, 25.0f, -27.5f)), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)), glm::vec4(0.80f, 0.90f, 0.95f, 1.0f), 0.0f));
+    objects.push_back(std::make_unique<Plane>(40, 10, glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(50.0f, 30.0f, 0.0f)), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)), glm::vec4(0.85f, 0.85f, 0.90f, 1.0f), 0.0f));
+    objects.push_back(std::make_unique<Plane>(50, 100, glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, 25.0f, 0.0f)), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)), glm::vec4(0.80f, 0.90f, 0.95f, 1.0f), 0.0f));
+    objects.push_back(std::make_unique<Plane>(100, 50, glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 25.0f, 50.0f)), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)), glm::vec4(0.75f, 0.90f, 0.80f, 1.0f), 0.0f));
+    objects.push_back(std::make_unique<Plane>(100, 50, glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 25.0f, -50.0f)), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)), glm::vec4(0.75f, 0.90f, 0.80f, 1.0f), 0.0f));
+
+    objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
+    objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
+    objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
+
+    // Additional scene setup could be added here
+}
+
+bool Scene::loadFromJSON(const std::string &path)
+{
+    namespace fs = std::filesystem;
+
+    // Resolve candidate paths: try given path, ASSET_ROOT + path, relative parents
+    std::vector<fs::path> candidates;
+    candidates.emplace_back(path);
+#ifdef ASSET_ROOT
+    candidates.emplace_back(fs::path(ASSET_ROOT) / path);
+#endif
+    candidates.emplace_back(fs::path("./") / path);
+    candidates.emplace_back(fs::path("../") / path);
+    candidates.emplace_back(fs::path("../../") / path);
+
+    fs::path chosen;
+    for (auto &c : candidates)
+    {
+        if (fs::exists(c))
+        {
+            chosen = c;
+            break;
+        }
+    }
+
+    if (chosen.empty())
+    {
+        std::cerr << "Scene: JSON file not found: " << path << " (tried several candidate locations)" << std::endl;
+        return false;
+    }
+
+    std::ifstream in(chosen);
+    if (!in)
+    {
+        std::cerr << "Scene: failed to open scene JSON: " << chosen << std::endl;
+        return false;
+    }
+
+    json j;
+    try
+    {
+        in >> j;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Scene: JSON parse error: " << e.what() << std::endl;
+        return false;
+    }
+
+    // Clear current scene
+    objects.clear();
+    player.reset();
+
+    // Parse objects array
+    if (j.contains("objects") && j["objects"].is_array())
+    {
+        for (const auto &obj : j["objects"])
+        {
+            try
+            {
+                std::string type = obj.value("type", "StaticObject");
+
+                // Model matrix can be provided directly as a flat 16-array (compatibility),
+                // or as user-friendly transform fields: position, rotation (deg), scale.
+                glm::mat4 model = glm::mat4(1.0f);
+                if (obj.contains("model") && obj["model"].is_array() && obj["model"].size() == 16)
+                {
+                    glm::mat4 m;
+                    for (int i = 0; i < 16; ++i)
+                        m[i / 4][i % 4] = obj["model"][i].get<float>();
+                    model = m;
+                }
+                else
+                {
+                    auto getVec3 = [&](const json &j, const std::string &key, glm::vec3 def) -> glm::vec3
+                    {
+                        if (j.contains(key) && j[key].is_array())
+                        {
+                            auto &a = j[key];
+                            glm::vec3 v = def;
+                            for (size_t ii = 0; ii < std::min<size_t>(3, a.size()); ++ii)
+                                (&v.x)[ii] = a[ii].get<float>();
+                            return v;
+                        }
+                        return def;
+                    };
+
+                    glm::vec3 pos = getVec3(obj, "position", glm::vec3(0.0f));
+                    glm::vec3 rot = getVec3(obj, "rotation", glm::vec3(0.0f)); // degrees: pitch,x ; yaw,y ; roll,z
+                    glm::vec3 scl = getVec3(obj, "scale", glm::vec3(1.0f));
+
+                    model = glm::translate(glm::mat4(1.0f), pos);
+                    // Apply yaw (y), pitch (x), roll (z) in that order
+                    model = glm::rotate(model, glm::radians(rot.y), glm::vec3(0.0f, 1.0f, 0.0f));
+                    model = glm::rotate(model, glm::radians(rot.x), glm::vec3(1.0f, 0.0f, 0.0f));
+                    model = glm::rotate(model, glm::radians(rot.z), glm::vec3(0.0f, 0.0f, 1.0f));
+                    model = glm::scale(model, scl);
+                }
+
+                glm::vec4 color = glm::vec4(1.0f);
+                if (obj.contains("color"))
+                {
+                    if (obj["color"].is_array())
+                    {
+                        auto &c = obj["color"];
+                        for (size_t k = 0; k < std::min<size_t>(4, c.size()); ++k)
+                            (&color.r)[k] = c[k].get<float>();
+                    }
+                    else if (obj["color"].is_string())
+                    {
+                        // Parse hex string like "#RRGGBB" or "#RRGGBBAA"
+                        std::string s = obj["color"].get<std::string>();
+                        if (!s.empty() && s[0] == '#')
+                        {
+                            try
+                            {
+                                std::string hex = s.substr(1);
+                                unsigned int v = std::stoul(hex, nullptr, 16);
+                                if (hex.size() == 6)
+                                {
+                                    unsigned int r = (v >> 16) & 0xFF;
+                                    unsigned int g = (v >> 8) & 0xFF;
+                                    unsigned int b = v & 0xFF;
+                                    color = glm::vec4(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+                                }
+                                else if (hex.size() == 8)
+                                {
+                                    unsigned int r = (v >> 24) & 0xFF;
+                                    unsigned int g = (v >> 16) & 0xFF;
+                                    unsigned int b = (v >> 8) & 0xFF;
+                                    unsigned int a = v & 0xFF;
+                                    color = glm::vec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+                                }
+                            }
+                            catch (...)
+                            {
+                            }
+                        }
+                    }
+                }
+
+                float mass = obj.value("mass", 0.0f);
+
+                if (type == "Plane")
+                {
+                    float length = obj.value("length", 100.0f);
+                    float width = obj.value("width", 100.0f);
+                    objects.push_back(std::make_unique<Plane>(length, width, model, color, mass));
+                }
+                else if (type == "Cube")
+                {
+                    int size = obj.value("size", 1);
+                    objects.push_back(std::make_unique<Cube>(size, model, color, mass));
+                }
+                else // StaticObject (mesh)
+                {
+                    std::string meshPath = obj.value("mesh", "");
+                    std::string meshName = obj.value("mesh_name", meshPath);
+
+                    auto &am = AssetManager::instance();
+                    std::shared_ptr<Mesh> mesh = nullptr;
+                    if (!meshPath.empty())
+                        mesh = am.loadStaticMeshFromOBJ(meshPath, meshName);
+                    if (!mesh)
+                    {
+                        // fallback to cow embedded mesh
+                        mesh = am.loadStaticMeshFromArrays("cow", cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3);
+                    }
+
+                    if (mesh)
+                    {
+                        // Use mesh raw data for collision generation
+                        const auto &verts = mesh->getVertices();
+                        const auto &inds = mesh->getIndices();
+                        int stride = mesh->getFloatsPerVertex();
+                        objects.push_back(std::make_unique<StaticObject>(mesh, verts.data(), verts.size() / stride, inds.data(), inds.size(), stride, model, color, mass));
+                    }
+                }
+            }
+            catch (const std::exception &e)
+            {
+                std::cerr << "Scene: error parsing object: " << e.what() << std::endl;
+            }
+        }
+    }
+
+    // Player block (optional)
+    if (j.contains("player") && j["player"].is_object())
+    {
+        try
+        {
+            glm::mat4 pm = glm::mat4(1.0f);
+            if (j["player"].contains("model") && j["player"]["model"].is_array() && j["player"]["model"].size() == 16)
+            {
+                for (int i = 0; i < 16; ++i)
+                    pm[i / 4][i % 4] = j["player"]["model"][i].get<float>();
+            }
+            // Create player with default camera pointer null; caller should register camera and window
+            player = nullptr; // player will be created by main via scene.addPlayer or left null
+        }
+        catch (...)
+        {
+        }
+    }
+
+    // remember resolved path for hot-reload
+    scenePath = chosen.string();
+    lastWriteTime = fs::last_write_time(chosen);
+
+    std::cerr << "Scene: loaded " << objects.size() << " objects from " << path << std::endl;
+    return true;
+}
+
+bool Scene::saveToJSON(const std::string &path)
+{
+    json j;
+    j["objects"] = json::array();
+    for (auto &o : objects)
+    {
+        json obj;
+        // Try dynamic casts
+        if (dynamic_cast<Plane *>(o.get()))
+        {
+            obj["type"] = "Plane";
+        }
+        else if (dynamic_cast<Cube *>(o.get()))
+        {
+            obj["type"] = "Cube";
+        }
+        else
+        {
+            obj["type"] = "StaticObject";
+            // If mesh present, attempt to reference by name not available here; leave blank
+        }
+        // write model matrix as flat array
+        glm::mat4 m = o->getModel();
+        obj["model"] = json::array();
+        for (int i = 0; i < 16; ++i)
+            obj["model"].push_back(m[i / 4][i % 4]);
+
+        glm::vec4 c = o->getColor();
+        obj["color"] = {c.r, c.g, c.b, c.a};
+
+        j["objects"].push_back(obj);
+    }
+
+    if (!scenePath.empty())
+        j["scenePath"] = scenePath;
+
+    std::ofstream out(path);
+    if (!out)
+        return false;
+    out << j.dump(4);
+    return true;
+}
+
+void Scene::checkReload()
+{
+    if (scenePath.empty())
+        return;
+    namespace fs = std::filesystem;
+    fs::path p(scenePath);
+    if (!fs::exists(p))
+        return;
+    auto t = fs::last_write_time(p);
+    if (t != lastWriteTime)
+    {
+        std::cerr << "Scene: detected change in " << scenePath << ", reloading." << std::endl;
+        loadFromJSON(scenePath);
+    }
+}
+
+void Scene::addPlayer(std::unique_ptr<Player> pl, Window *window, PhysicsWorld &physics)
+{
+    if (!pl)
+        return;
+    player = std::move(pl);
+    // register input callbacks
+    if (window && player)
+    {
+        glfwSetWindowUserPointer(window->getWindow(), player.get());
+        glfwSetCursorPosCallback(window->getWindow(), Player::mouse_callback);
+    }
+    // add rigid body to physics
+    if (player->getRigidBody())
+        physics.addRigidBody(player->getRigidBody());
+}
