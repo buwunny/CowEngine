@@ -15,6 +15,7 @@ set(SOURCES
     src/objects/Plane.cpp
     src/objects/Player.cpp
     src/rooms/BasicRoom.cpp
+    src/PhysicsWorld.cpp
     src/Camera.cpp
     src/InputHandler.cpp
     src/Window.cpp

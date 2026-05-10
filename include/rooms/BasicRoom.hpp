@@ -8,7 +8,7 @@
 class BasicRoom : public Room {
 public:
     BasicRoom(glm::vec3 position, glm::vec3 front, glm::vec3 up);
-    ~BasicRoom(); 
+    ~BasicRoom() = default;
 };
 
 #endif // BASICROOM_HPP

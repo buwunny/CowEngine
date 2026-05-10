@@ -8,17 +8,17 @@ Player::Player(Camera *camera, glm::mat4 model)
     lastY = 1080 / 2;
     firstMouse = true;
     this->camera = camera;
-    inputHandler = new InputHandler(camera);
-    collisionShape = new btCapsuleShape(0.5f, 1.0f);
+    inputHandler = std::make_unique<InputHandler>(camera);
+    collisionShape = std::make_unique<btCapsuleShape>(0.5f, 1.0f);
     btVector3 localInertia(0, 0, 0);
     collisionShape->calculateLocalInertia(mass, localInertia);
 
     btTransform transform;
     transform.setFromOpenGLMatrix(glm::value_ptr(model));
-    btDefaultMotionState *motionState = new btDefaultMotionState(transform);
+    motionState = std::make_unique<btDefaultMotionState>(transform);
 
-    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState, collisionShape, localInertia);
-    rigidBody = new btRigidBody(rbInfo);
+    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState.get(), collisionShape.get(), localInertia);
+    rigidBody.reset(new btRigidBody(rbInfo));
     rigidBody->setAngularFactor(btVector3(0, 0, 0));
 
     rigidBody->setCcdMotionThreshold(0.5);
@@ -27,23 +27,16 @@ Player::Player(Camera *camera, glm::mat4 model)
     rigidBody->setFriction(1.0f);
 }
 
-Player::~Player()
-{
-    delete inputHandler;
-    delete collisionShape;
-    delete rigidBody;
-}
-
-bool Player::isOnGround(btDiscreteDynamicsWorld *dynamicsWorld)
+bool Player::isOnGround(PhysicsWorld *physics)
 {
     btVector3 start = rigidBody->getWorldTransform().getOrigin();
     btVector3 end = start - btVector3(0, 1.05f, 0);
     btCollisionWorld::ClosestRayResultCallback rayCallback(start, end);
-    dynamicsWorld->rayTest(start, end, rayCallback);
+    physics->rayTest(start, end, rayCallback);
     return rayCallback.hasHit();
 }
 
-void Player::processInput(Window *window, float deltaTime, btDiscreteDynamicsWorld *dynamicsWorld)
+void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics)
 {
     float cameraSpeed = movementSpeed * deltaTime;
 
@@ -51,7 +44,7 @@ void Player::processInput(Window *window, float deltaTime, btDiscreteDynamicsWor
     btVector3 forwardDir = btVector3(camera->getFront().x, 0, camera->getFront().z).normalized();
     btVector3 rightDir = btVector3(camera->getRight().x, 0, camera->getRight().z).normalized();
 
-    bool isOnGround = this->isOnGround(dynamicsWorld);
+    bool isOnGround = this->isOnGround(physics);
     float adjustedSpeed = isOnGround ? cameraSpeed : cameraSpeed * 0.1f;
 
     if (window->isKeyPressed(GLFW_KEY_W))

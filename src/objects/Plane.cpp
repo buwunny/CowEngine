@@ -2,8 +2,8 @@
 
 Plane::Plane(float length, float width, glm::mat4 model, glm::vec4 color, float mass)
 {
-    mesh = new PlaneMesh(length, width, length / 5.0f, width / 5.0f);
-    collisionShape = new btBoxShape(btVector3(length / 2.0f, 0.01f, width / 2.0f));
+    mesh = std::make_unique<PlaneMesh>(length, width, length / 5.0f, width / 5.0f);
+    collisionShape = std::make_unique<btBoxShape>(btVector3(length / 2.0f, 0.01f, width / 2.0f));
     btVector3 localInertia(0, 0, 0);
     if (mass != 0.0f)
     {
@@ -11,21 +11,14 @@ Plane::Plane(float length, float width, glm::mat4 model, glm::vec4 color, float 
     }
     btTransform transform;
     transform.setFromOpenGLMatrix(glm::value_ptr(model));
-    btDefaultMotionState *motionState = new btDefaultMotionState(transform);
-    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState, collisionShape, localInertia);
-    rigidBody = new btRigidBody(rbInfo);
+    motionState = std::make_unique<btDefaultMotionState>(transform);
+    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState.get(), collisionShape.get(), localInertia);
+    rigidBody.reset(new btRigidBody(rbInfo));
 
     rigidBody->setFriction(1.0f);
 
     this->model = model;
     this->color = color;
-}
-
-Plane::~Plane()
-{
-    delete mesh;
-    delete collisionShape;
-    delete rigidBody;
 }
 
 void Plane::render(Window &window, Shader &shader)

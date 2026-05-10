@@ -2,8 +2,8 @@
 
 Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass)
 {
-    mesh = new CubeMesh(size);
-    collisionShape = new btBoxShape(btVector3(size / 2.0f, size / 2.0f, size / 2.0f));
+    mesh = std::make_unique<CubeMesh>(size);
+    collisionShape = std::make_unique<btBoxShape>(btVector3(size / 2.0f, size / 2.0f, size / 2.0f));
     btVector3 localInertia(0, 0, 0);
     if (mass != 0.0f)
     {
@@ -11,18 +11,11 @@ Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass)
     }
     btTransform transform;
     transform.setFromOpenGLMatrix(glm::value_ptr(model));
-    btDefaultMotionState *motionState = new btDefaultMotionState(transform);
-    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState, collisionShape, localInertia);
-    rigidBody = new btRigidBody(rbInfo);
+    motionState = std::make_unique<btDefaultMotionState>(transform);
+    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState.get(), collisionShape.get(), localInertia);
+    rigidBody.reset(new btRigidBody(rbInfo));
     this->model = model;
     this->color = color;
-}
-
-Cube::~Cube()
-{
-    delete mesh;
-    delete collisionShape;
-    delete rigidBody;
 }
 
 void Cube::render(Window &window, Shader &shader)

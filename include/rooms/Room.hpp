@@ -5,19 +5,21 @@
 #include "../Shader.hpp"
 #include "../Camera.hpp"
 #include "../Window.hpp"
+#include "../PhysicsWorld.hpp"
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <vector>
+#include <memory>
 
 class Room
 {
 public:
-    void addRigidBodiesToWorld(btDynamicsWorld *dynamicsWorld)
+    void addRigidBodiesToWorld(PhysicsWorld &physics)
     {
         for (auto &object : objects)
         {
-            dynamicsWorld->addRigidBody(object->getRigidBody());
+            physics.addRigidBody(object->getRigidBody());
         }
     };
     void update()
@@ -50,7 +52,7 @@ public:
     };
 
 protected:
-    std::vector<Object *> objects;
+    std::vector<std::unique_ptr<Object>> objects;
 };
 
 #endif // ROOM_HPP

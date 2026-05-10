@@ -9,22 +9,25 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <btBulletDynamicsCommon.h>
+#include "../PhysicsWorld.hpp"
 
-class Player : public Object {
+class Player : public Object
+{
 public:
-    Player(Camera* camera, glm::mat4 model = glm::mat4(1.0f));
-    ~Player();
+    Player(Camera *camera, glm::mat4 model = glm::mat4(1.0f));
+    ~Player() = default;
 
-    bool isOnGround(btDiscreteDynamicsWorld* dynamicsWorld);
-    void processInput(Window *window, float deltaTime, btDiscreteDynamicsWorld* dynamicsWorld);
+    bool isOnGround(PhysicsWorld *physics);
+    void processInput(Window *window, float deltaTime, PhysicsWorld *physics);
     void processMouse(float xpos, float ypos);
-    static void mouse_callback(GLFWwindow* window, double xpos, double ypos);
-    void render(Window& window, Shader& shader) {};
-    void renderTransparent(Window& window, Shader& shader) {};
-    void renderFill(Window& window, Shader& shader) {};
+    static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
+    void render(Window &window, Shader &shader) {};
+    void renderTransparent(Window &window, Shader &shader) {};
+    void renderFill(Window &window, Shader &shader) {};
+
 private:
-    Camera* camera;
-    InputHandler* inputHandler;
+    Camera *camera;
+    std::unique_ptr<InputHandler> inputHandler;
     float mass;
     float movementSpeed;
     float lastX, lastY;

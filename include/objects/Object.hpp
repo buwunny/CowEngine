@@ -9,10 +9,12 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include <btBulletDynamicsCommon.h>
+#include <memory>
 
 class Object
 {
 public:
+    virtual ~Object() {}
     virtual void render(Window &window, Shader &shader) = 0;
     virtual void renderTransparent(Window &window, Shader &shader) = 0;
     virtual void renderFill(Window &window, Shader &shader) = 0;
@@ -27,17 +29,19 @@ public:
     };
     glm::mat4 getModel() { return model; };
     glm::vec4 getColor() { return color; };
-    Mesh *getMesh() { return mesh; };
+    Mesh *getMesh() { return mesh.get(); };
+    void setMesh(Mesh *m) { mesh.reset(m); };
     void setModel(glm::mat4 model) { this->model = model; };
-    btRigidBody *getRigidBody() { return rigidBody; };
-    void setRigidBody(btRigidBody *rigidBody) { this->rigidBody = rigidBody; };
-    btCollisionShape *getCollisionShape() { return collisionShape; };
-    void setCollisionShape(btCollisionShape *shape) { this->collisionShape = shape; };
+    btRigidBody *getRigidBody() { return rigidBody.get(); };
+    void setRigidBody(btRigidBody *rigidBody) { this->rigidBody.reset(rigidBody); };
+    btCollisionShape *getCollisionShape() { return collisionShape.get(); };
+    void setCollisionShape(btCollisionShape *shape) { this->collisionShape.reset(shape); };
 
 protected:
-    btRigidBody *rigidBody;
-    btCollisionShape *collisionShape;
-    Mesh *mesh;
+    std::unique_ptr<btRigidBody> rigidBody;
+    std::unique_ptr<btCollisionShape> collisionShape;
+    std::unique_ptr<btMotionState> motionState;
+    std::unique_ptr<Mesh> mesh;
     glm::vec4 color;
     glm::mat4 model;
     bool wireframe;

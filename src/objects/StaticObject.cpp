@@ -2,13 +2,13 @@
 
 StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsigned int *indices, size_t index_count, int floats_per_vertex, glm::mat4 model, glm::vec4 color, float mass)
 {
-    mesh = new StaticMesh(verts, vertex_count, indices, index_count, floats_per_vertex);
+    mesh = std::make_unique<StaticMesh>(verts, vertex_count, indices, index_count, floats_per_vertex);
 
     // Compute tight AABB from vertex positions (assumes position is first 3 floats)
     if (vertex_count == 0 || floats_per_vertex < 3)
     {
         // fallback
-        collisionShape = new btBoxShape(btVector3(1.0f, 1.0f, 1.0f));
+        collisionShape = std::make_unique<btBoxShape>(btVector3(1.0f, 1.0f, 1.0f));
     }
     else
     {
@@ -40,7 +40,7 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
         hull->optimizeConvexHull();
         hull->recalcLocalAabb();
 
-        collisionShape = hull;
+        collisionShape.reset(hull);
 
         // Incorporate center offset into model and initial rigidbody transform
         glm::mat4 centerMat = glm::translate(glm::mat4(1.0f), center);
@@ -54,9 +54,9 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
 
         btTransform transform;
         transform.setFromOpenGLMatrix(glm::value_ptr(this->model));
-        btDefaultMotionState *motionState = new btDefaultMotionState(transform);
-        btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState, collisionShape, inertia);
-        rigidBody = new btRigidBody(rbInfo);
+        motionState = std::make_unique<btDefaultMotionState>(transform);
+        btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState.get(), collisionShape.get(), inertia);
+        rigidBody.reset(new btRigidBody(rbInfo));
 
         this->color = color;
 
@@ -71,19 +71,12 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
     }
     btTransform transform;
     transform.setFromOpenGLMatrix(glm::value_ptr(model));
-    btDefaultMotionState *motionState = new btDefaultMotionState(transform);
-    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState, collisionShape, localInertia);
-    rigidBody = new btRigidBody(rbInfo);
+    motionState = std::make_unique<btDefaultMotionState>(transform);
+    btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState.get(), collisionShape.get(), localInertia);
+    rigidBody.reset(new btRigidBody(rbInfo));
 
     this->model = model;
     this->color = color;
-}
-
-StaticObject::~StaticObject()
-{
-    delete mesh;
-    delete collisionShape;
-    delete rigidBody;
 }
 
 void StaticObject::render(Window &window, Shader &shader)
