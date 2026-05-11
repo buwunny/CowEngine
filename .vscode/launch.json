@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run OpenGLProject (Debug)",
+            "name": "Run CowEngine (Debug)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/OpenGLProject",
+            "program": "${workspaceFolder}/build/CowEngine",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",

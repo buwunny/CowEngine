@@ -26,7 +26,7 @@ int main()
 {
     PhysicsWorld physics;
 
-    Window window(1920, 1080, "Spinning Cube");
+    Window window(1920, 1080, "CowEngine");
     Camera playerCamera(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
     // Create player via Scene so Scene owns it and registers callbacks
@@ -73,7 +73,7 @@ int main()
         {
             double fps = fpsCount / fpsTimer;
             std::ostringstream oss;
-            oss << "OpenGLProject - FPS: " << std::fixed << std::setprecision(1) << fps;
+            oss << "CowEngine - FPS: " << std::fixed << std::setprecision(1) << fps;
             std::string title = oss.str();
             glfwSetWindowTitle(window.getWindow(), title.c_str());
             fpsCount = 0;
