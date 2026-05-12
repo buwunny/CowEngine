@@ -165,9 +165,10 @@ if(EMSCRIPTEN)
     )
 
     # Do not attempt to copy shaders at post-build for the web target (preloaded instead)
-    # Copy our custom start.html into the web output as the generated CowEngine.html
+    # Copy our custom HTML shell into the web output so Pages serves our UI as index.html
+    set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/PlaygroundTemplate.html")
     add_custom_command(TARGET CowEngine_web POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_SOURCE_DIR}/src/PlaygroundTemplate.html $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.html
+        COMMAND ${CMAKE_COMMAND} -E copy ${CUSTOM_SHELL_SOURCE} $<TARGET_FILE_DIR:CowEngine_web>/index.html
+        COMMAND ${CMAKE_COMMAND} -E copy ${CUSTOM_SHELL_SOURCE} $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.html
     )
 endif()
