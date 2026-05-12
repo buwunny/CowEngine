@@ -39,3 +39,10 @@ void PhysicsWorld::rayTest(const btVector3 &from, const btVector3 &to, btCollisi
         return;
     dynamicsWorld->rayTest(from, to, result);
 }
+
+void PhysicsWorld::stepSimulation(float deltaTime, int maxSubSteps)
+{
+    if (!dynamicsWorld)
+        return;
+    dynamicsWorld->stepSimulation(deltaTime, maxSubSteps);
+}

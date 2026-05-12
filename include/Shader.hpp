@@ -1,7 +1,11 @@
 #ifndef SHADER_HPP
 #define SHADER_HPP
 
+#if defined(__EMSCRIPTEN__)
+#include <GLES3/gl3.h>
+#else
 #include <glad/glad.h>
+#endif
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <string>

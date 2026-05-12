@@ -1,6 +1,6 @@
 #include "Scene.hpp"
 #include "meshes/AssetManager.hpp"
-#include "../../cow_mesh.hpp"
+#include "../cow_mesh.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -374,8 +374,13 @@ void Scene::addPlayer(std::unique_ptr<Player> pl, Window *window, PhysicsWorld &
     // register input callbacks
     if (window && player)
     {
+#ifndef EMSCRIPTEN
         glfwSetWindowUserPointer(window->getWindow(), player.get());
         glfwSetCursorPosCallback(window->getWindow(), Player::mouse_callback);
+#else
+        // On web builds, forward mouse events from the Window wrapper to the player
+        Window::setEmscriptenPlayer(player.get());
+#endif
     }
     // add rigid body to physics
     if (player->getRigidBody())

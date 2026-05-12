@@ -4,10 +4,11 @@
         {
             "label": "cmake-build",
             "type": "shell",
-            "command": "cmake --build . -j",
-            "options": {
-                "cwd": "${workspaceFolder}/build"
-            },
+            "command": "bash",
+            "args": [
+                "-lc",
+                "if [ ! -d build-web ]; then source ${HOME}/emsdk/emsdk_env.sh >/dev/null 2>&1 && emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release; fi && cmake --build build-web -j"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -15,6 +16,57 @@
             "problemMatcher": [
                 "$gcc"
             ]
+        },
+        {
+            "label": "emsdk: configure web",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "source ${HOME}/emsdk/emsdk_env.sh >/dev/null 2>&1 && emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release"
+            ],
+            "group": "build",
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "cmake: build web",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "source ${HOME}/emsdk/emsdk_env.sh >/dev/null 2>&1 && cmake --build build-web -j"
+            ],
+            "group": "build",
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "serve build-web",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "python3 -m http.server --directory build-web 8000"
+            ],
+            "isBackground": true,
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build-and-serve",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "emsdk: configure web",
+                "cmake: build web",
+                "serve build-web"
+            ],
+            "problemMatcher": []
         }
     ]
 }

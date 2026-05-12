@@ -20,6 +20,7 @@ public:
     bool isOnGround(PhysicsWorld *physics);
     void processInput(Window *window, float deltaTime, PhysicsWorld *physics);
     void processMouse(float xpos, float ypos);
+    void processMouseDelta(float dx, float dy);
     static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
     void render(Window &window, Shader &shader) {};
     void renderTransparent(Window &window, Shader &shader) {};
@@ -34,5 +35,9 @@ private:
     float lastX, lastY;
     bool firstMouse;
     bool lastTabPressed;
+    float pendingMouseDx = 0.0f;
+    float pendingMouseDy = 0.0f;
+    float smoothedMouseDx = 0.0f;
+    float smoothedMouseDy = 0.0f;
 };
 #endif // PLAYER_HPP

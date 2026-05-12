@@ -1,7 +1,7 @@
 #ifndef PHYSICSWORLD_HPP
 #define PHYSICSWORLD_HPP
 
-#include <bullet/btBulletDynamicsCommon.h>
+#include <btBulletDynamicsCommon.h>
 
 class PhysicsWorld
 {
@@ -21,11 +21,7 @@ public:
             dynamicsWorld->setGravity(g);
     }
     btVector3 getGravity() const { return dynamicsWorld ? dynamicsWorld->getGravity() : btVector3(0, 0, 0); }
-    void stepSimulation(float deltaTime, int maxSubSteps = 10)
-    {
-        if (dynamicsWorld)
-            dynamicsWorld->stepSimulation(deltaTime, maxSubSteps);
-    }
+    void stepSimulation(float deltaTime, int maxSubSteps = 10);
 
 private:
     btDefaultCollisionConfiguration *collisionConfiguration;

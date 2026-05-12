@@ -5,7 +5,11 @@
 #include "../Window.hpp"
 #include "../Shader.hpp"
 
+#if defined(__EMSCRIPTEN__)
+#include <GLES3/gl3.h>
+#else
 #include <glad/glad.h>
+#endif
 #include <glm/glm.hpp>
 #include <vector>
 #include <btBulletDynamicsCommon.h>
@@ -21,13 +25,16 @@ public:
     void update()
     {
         btTransform trans;
-        this->getRigidBody()->getMotionState()->getWorldTransform(trans);
-        btScalar matrix[16];
-        trans.getOpenGLMatrix(matrix);
-        glm::mat4 modelMatrix = glm::make_mat4(matrix);
-        // Apply any stored local scale after physics transform so visual scale matches JSON
-        modelMatrix = glm::scale(modelMatrix, localScale);
-        this->setModel(modelMatrix);
+        if (this->getRigidBody())
+        {
+            this->getRigidBody()->getMotionState()->getWorldTransform(trans);
+            btScalar matrix[16];
+            trans.getOpenGLMatrix(matrix);
+            glm::mat4 modelMatrix = glm::make_mat4(matrix);
+            // Apply any stored local scale after physics transform so visual scale matches JSON
+            modelMatrix = glm::scale(modelMatrix, localScale);
+            this->setModel(modelMatrix);
+        }
     };
     glm::mat4 getModel() { return model; };
     glm::vec4 getColor() { return color; };
@@ -64,7 +71,7 @@ public:
             modelNoScale[2][2] /= sx.z;
         }
 
-        // Apply local scaling to collision shape if present
+        // Apply local scaling to collision shape if present (also needed for web builds)
         if (collisionShape)
         {
             collisionShape->setLocalScaling(btVector3(localScale.x, localScale.y, localScale.z));

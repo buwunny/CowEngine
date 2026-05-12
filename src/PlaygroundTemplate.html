@@ -1,0 +1,149 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>CowEngine - Playground</title>
+    <style>
+        body {
+            font-family: Arial;
+            margin: 16px;
+            background: #111;
+            color: #eee
+        }
+
+        #controls {
+            margin-bottom: 12px
+        }
+
+        #output {
+            width: 100%;
+            height: 200px;
+            background: #000;
+            color: rgb(255, 0, 0);
+            font-family: monospace;
+            padding: 8px;
+            overflow: auto
+        }
+    </style>
+</head>
+
+<body>
+    <div id="controls">
+        <button id="startBtn" disabled>Start</button>
+        <button id="fsBtn">Fullscreen</button>
+        <label for="sensitivity">Sensitivity:</label>
+        <input id="sensitivity" type="range" min="0.1" max="10" step="0.1" value="1">
+        <span id="sensVal">1.0</span>
+        <span id="status">Waiting for runtime...</span>
+    </div>
+    <div>
+        <canvas id="canvas" width="1280" height="720"
+            style="display:block;width:100%;height:480px;background:#000;border:1px solid #333"></canvas>
+    </div>
+    <div>
+        <textarea id="output" readonly></textarea>
+    </div>
+
+    <script>
+        // Predefine Module to avoid auto-running main; expose runtime hook and start button
+        var output = document.getElementById('output');
+        function appendLog(msg) {
+            output.value += msg + '\n';
+            output.scrollTop = output.scrollHeight;
+        }
+
+        var Module = {
+            noInitialRun: true,
+            print: function () { var s = Array.prototype.join.call(arguments, ' '); console.log(s); appendLog(s); },
+            printErr: function () { var s = Array.prototype.join.call(arguments, ' '); console.error(s); appendLog('ERR: ' + s); },
+            setStatus: function (s) { document.getElementById('status').innerText = s; appendLog('[status] ' + s); },
+            onRuntimeInitialized: function () {
+                document.getElementById('status').innerText = 'Runtime initialized. Click Start.';
+                var btn = document.getElementById('startBtn');
+                btn.disabled = false;
+                var started = false;
+                btn.onclick = function () {
+                    if (!started) {
+                        Module.print('Calling main...');
+                        Module.callMain([]);
+                        started = true;
+                        btn.textContent = 'Stop';
+                    } else {
+                        // Stop: reload page to tear down runtime and return to start UI
+                        window.location.reload();
+                    }
+                };
+
+                // Sensitivity slider: expose as Module.mouseSensitivity for C++ to read
+                var sens = document.getElementById('sensitivity');
+                var sensVal = document.getElementById('sensVal');
+                Module.mouseSensitivity = parseFloat(sens.value);
+                sensVal.textContent = Module.mouseSensitivity.toFixed(1);
+                sens.addEventListener('input', function () {
+                    Module.mouseSensitivity = parseFloat(this.value);
+                    sensVal.textContent = Module.mouseSensitivity.toFixed(1);
+                });
+
+                // Responsive canvas sizing
+                function resizeCanvas() {
+                    var canvas = document.getElementById('canvas');
+                    var controls = document.getElementById('controls');
+                    var output = document.getElementById('output');
+                    var ratio = window.devicePixelRatio || 1;
+                    var availableWidth, availableHeight;
+                    // If we're fullscreen on the canvas, use the full viewport
+                    if (document.fullscreenElement === canvas) {
+                        availableWidth = window.innerWidth;
+                        availableHeight = window.innerHeight;
+                        canvas.style.width = '100vw';
+                        canvas.style.height = '100vh';
+                    } else {
+                        // compute available space beneath controls and above output
+                        availableWidth = window.innerWidth - 32; // account for body margin
+                        availableHeight = window.innerHeight - controls.getBoundingClientRect().height - output.getBoundingClientRect().height - 48;
+                        if (availableHeight < 128) availableHeight = 128;
+                        canvas.style.width = availableWidth + 'px';
+                        canvas.style.height = availableHeight + 'px';
+                    }
+                    canvas.width = Math.floor(availableWidth * ratio);
+                    canvas.height = Math.floor(availableHeight * ratio);
+                    // Ensure Emscripten uses our canvas element
+                    if (typeof Module !== 'undefined') {
+                        Module.canvas = canvas;
+                    }
+                }
+
+                // Fullscreen button and pointer lock
+                var fsBtn = document.getElementById('fsBtn');
+                fsBtn.onclick = function () {
+                    var canvas = document.getElementById('canvas');
+                    if (document.fullscreenElement) {
+                        document.exitFullscreen();
+                    } else {
+                        canvas.requestFullscreen();
+                    }
+                };
+
+                // Clicking the canvas requests pointer lock for better mouse control
+                var canvasEl = document.getElementById('canvas');
+                canvasEl.addEventListener('click', function () {
+                    if (document.pointerLockElement !== canvasEl) {
+                        canvasEl.requestPointerLock = canvasEl.requestPointerLock || canvasEl.mozRequestPointerLock || canvasEl.webkitRequestPointerLock;
+                        if (canvasEl.requestPointerLock) canvasEl.requestPointerLock();
+                    }
+                });
+
+                // (debug logging removed)
+
+                window.addEventListener('resize', resizeCanvas);
+                document.addEventListener('fullscreenchange', resizeCanvas);
+                // initial sizing
+                resizeCanvas();
+            }
+        };
+    </script>
+    <script async src="CowEngine.js"></script>
+</body>
+
+</html>

@@ -1,4 +1,5 @@
 #include "objects/Cube.hpp"
+#include <cstdio>
 
 Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass)
 {
@@ -16,6 +17,9 @@ Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass)
     motionState = std::make_unique<btDefaultMotionState>(transform);
     btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState.get(), collisionShape.get(), localInertia);
     rigidBody.reset(new btRigidBody(rbInfo));
+    // Ensure body is active and print debug info for web builds
+    rigidBody->setActivationState(ACTIVE_TAG);
+    std::printf("Cube: created rigidBody=%p mass=%.3f active=%d\n", (void *)rigidBody.get(), (double)mass, rigidBody->getActivationState());
 
     this->color = color;
 }
@@ -23,13 +27,19 @@ Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass)
 void Cube::render(Window &window, Shader &shader)
 {
     shader.setModelMatrix(model);
+    // Draw filled geometry first with polygon offset to avoid z-fighting
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(1.0f, 1.0f);
     window.setPolygonMode(GL_FILL);
     shader.setFragmentColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
     mesh->render();
+    glDisable(GL_POLYGON_OFFSET_FILL);
+
+    // Draw wireframe overlay
     window.setPolygonMode(GL_LINE);
     window.setLineWidth(3.0f);
     shader.setFragmentColor(color);
-    mesh->render();
+    mesh->renderWireframe();
 }
 
 void Cube::renderTransparent(Window &window, Shader &shader)
@@ -38,7 +48,7 @@ void Cube::renderTransparent(Window &window, Shader &shader)
     window.setPolygonMode(GL_LINE);
     window.setLineWidth(3.0f);
     shader.setFragmentColor(color);
-    mesh->render();
+    mesh->renderWireframe();
 }
 
 void Cube::renderFill(Window &window, Shader &shader)

@@ -53,6 +53,25 @@ void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics
     if (!window->isCursorDisabled())
         return;
 
+    // Apply accumulated pointer-lock mouse deltas once per frame with exponential smoothing
+    {
+        // smoothing rate (higher = faster response, lower = smoother)
+        const float smoothingK = 20.0f;
+        float alpha = 1.0f - std::exp(-smoothingK * deltaTime);
+        smoothedMouseDx += (pendingMouseDx - smoothedMouseDx) * alpha;
+        smoothedMouseDy += (pendingMouseDy - smoothedMouseDy) * alpha;
+        // multiplier to match desktop sensitivity
+        const float pointerLockMultiplier = 5.0f;
+        // apply small movements even if below integer thresholds
+        if (std::fabs(smoothedMouseDx) > 0.0001f || std::fabs(smoothedMouseDy) > 0.0001f)
+        {
+            this->camera->look(smoothedMouseDx * pointerLockMultiplier, -smoothedMouseDy * pointerLockMultiplier);
+        }
+        // clear pending deltas (they've been integrated into smoothed state)
+        pendingMouseDx = 0.0f;
+        pendingMouseDy = 0.0f;
+    }
+
     float cameraSpeed = movementSpeed * deltaTime;
 
     btVector3 velocity = rigidBody->getLinearVelocity();
@@ -106,6 +125,13 @@ void Player::processMouse(float xpos, float ypos)
     lastY = ypos;
 
     this->camera->look(xoffset, yoffset);
+}
+
+void Player::processMouseDelta(float dx, float dy)
+{
+    // Accumulate deltas; they will be applied once per frame in processInput
+    pendingMouseDx += dx;
+    pendingMouseDy += dy;
 }
 
 void Player::resetInputState()

@@ -14,6 +14,15 @@
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
             "preLaunchTask": "cmake-build"
+        },
+        {
+            "name": "Run CowEngine Web (Chrome)",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:8000/CowEngine.html",
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "build-and-serve",
+            "userDataDir": "${workspaceFolder}/.vscode/chrome-user-data",
         }
     ]
 }

@@ -58,6 +58,8 @@ PlaneMesh::PlaneMesh(float x, float z, int xSubdivisions, int zSubdivisions)
 void PlaneMesh::render()
 {
     glBindVertexArray(VAO);
+    // Ensure triangle element buffer is bound for compatibility with GL/ES drivers
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 }

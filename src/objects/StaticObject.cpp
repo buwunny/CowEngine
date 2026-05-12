@@ -60,6 +60,10 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
 
         this->color = color;
 
+        // Activate and log for debugging on web builds
+        rigidBody->setActivationState(ACTIVE_TAG);
+        std::printf("StaticObject: created rigidBody=%p mass=%.3f objs_vertices=%zu inds=%zu active=%d\n", (void *)rigidBody.get(), (double)mass, vertex_count, index_count, rigidBody->getActivationState());
+
         return;
     }
 
@@ -161,13 +165,21 @@ StaticObject::StaticObject(std::shared_ptr<Mesh> sharedMesh, const float *verts,
 void StaticObject::render(Window &window, Shader &shader)
 {
     shader.setModelMatrix(model);
+    // Draw filled geometry first. Use polygon offset to push fill slightly
+    // away from the camera to avoid depth-equal fragments blocking the
+    // subsequent wireframe/line overlay (prevents z-fighting on web/GL).
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(1.0f, 1.0f);
     window.setPolygonMode(GL_FILL);
     shader.setFragmentColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
     mesh->render();
+    glDisable(GL_POLYGON_OFFSET_FILL);
+
+    // Draw wireframe overlay on top
     window.setPolygonMode(GL_LINE);
     window.setLineWidth(3.0f);
     shader.setFragmentColor(color);
-    mesh->render();
+    mesh->renderWireframe();
 }
 
 void StaticObject::renderTransparent(Window &window, Shader &shader)
@@ -176,7 +188,7 @@ void StaticObject::renderTransparent(Window &window, Shader &shader)
     window.setPolygonMode(GL_LINE);
     window.setLineWidth(3.0f);
     shader.setFragmentColor(color);
-    mesh->render();
+    mesh->renderWireframe();
 }
 
 void StaticObject::renderFill(Window &window, Shader &shader)

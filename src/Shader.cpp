@@ -20,6 +20,38 @@ Shader::Shader(const std::string vertexShaderPath, const std::string fragmentSha
         fragmentShaderSourceStr = DEFAULT_FRAGMENT;
     }
 
+#if defined(__EMSCRIPTEN__)
+    // WebGL2 / GLSL ES 3.00 compatibility adjustments:
+    auto replace_version = [](std::string &s)
+    {
+        const std::string v330 = "#version 330 core";
+        const std::string v300 = "#version 300 es";
+        size_t pos = s.find(v330);
+        if (pos != std::string::npos)
+            s.replace(pos, v330.size(), v300);
+    };
+    replace_version(vertexShaderSourceStr);
+    replace_version(fragmentShaderSourceStr);
+
+    // Ensure fragment shader has a default precision for floats
+    if (fragmentShaderSourceStr.find("precision") == std::string::npos)
+    {
+        // Insert precision line after the version directive if present, otherwise at top
+        const std::string v300 = "#version 300 es";
+        size_t pos = fragmentShaderSourceStr.find(v300);
+        std::string precision = "\nprecision mediump float;\n";
+        if (pos != std::string::npos)
+        {
+            size_t insertPos = pos + v300.size();
+            fragmentShaderSourceStr.insert(insertPos, precision);
+        }
+        else
+        {
+            fragmentShaderSourceStr = precision + fragmentShaderSourceStr;
+        }
+    }
+#endif
+
     const char *vertexShaderSource = vertexShaderSourceStr.c_str();
     const char *fragmentShaderSource = fragmentShaderSourceStr.c_str();
 

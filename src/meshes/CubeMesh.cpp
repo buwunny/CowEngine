@@ -22,6 +22,10 @@ CubeMesh::CubeMesh(int size)
         0, 3, 7, 7, 4, 0,
         1, 2, 6, 6, 5, 1};
 
+    // Also populate base class vertex/index arrays so generic wireframe rendering works
+    this->vertices.assign(vertices, vertices + (sizeof(vertices) / sizeof(float)));
+    this->indices.assign(indices, indices + (sizeof(indices) / sizeof(unsigned int)));
+
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
@@ -44,6 +48,8 @@ CubeMesh::CubeMesh(int size)
 void CubeMesh::render()
 {
     glBindVertexArray(VAO);
+    // Ensure triangle element buffer is bound (some GL/ES drivers require explicit bind)
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 }
