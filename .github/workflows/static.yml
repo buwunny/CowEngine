@@ -1,0 +1,59 @@
+name: Deploy static content to Pages
+
+on:
+  push:
+    branches: ["page"]
+  workflow_dispatch:
+    inputs:
+      buildType:
+        description: 'CMake build type'
+        required: false
+        default: 'Release'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake python3 git
+
+      - name: Install and activate EMSDK, build web
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          ./emsdk install latest
+          ./emsdk activate latest
+          source ./emsdk_env.sh
+          cd $GITHUB_WORKSPACE
+          emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=${{ github.event.inputs.buildType || 'Release' }}
+          cmake --build build-web -j
+        shell: bash
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload build-web artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build-web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
