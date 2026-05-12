@@ -18,6 +18,8 @@
 #include "Scene.hpp"
 #include "meshes/AssetManager.hpp"
 #include <memory>
+#include "../cow_mesh.hpp"
+#include <cstdlib>
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -89,6 +91,46 @@ void main_loop()
     g_scene->render(*g_window, *g_shader);
 
     g_window->update();
+}
+
+// Expose a spawn function to JavaScript so the page can add cows at runtime.
+extern "C"
+{
+#ifdef EMSCRIPTEN
+    EMSCRIPTEN_KEEPALIVE
+    void spawnCow()
+    {
+        if (!g_scene)
+            return;
+        auto &assetManager = AssetManager::instance();
+        auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
+        if (!cowMesh)
+            cowMesh = assetManager.loadStaticMeshFromArrays("cow", cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3);
+
+        glm::vec3 pos(0.0f, 10.0f, 0.0f);
+        if (g_playerCamera)
+        {
+            pos = g_playerCamera->getPosition() + g_playerCamera->getFront() * 5.0f;
+            pos.y += 2.0f;
+        }
+
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        glm::vec4 color = glm::vec4(r, g, b, 1.0f);
+        float mass = 1.0f;
+
+        if (cowMesh)
+        {
+            const auto &verts = cowMesh->getVertices();
+            const auto &inds = cowMesh->getIndices();
+            int stride = cowMesh->getFloatsPerVertex();
+            auto obj = std::make_unique<StaticObject>(cowMesh, verts.data(), verts.size() / stride, inds.data(), inds.size(), stride, model, color, mass);
+            g_scene->addObject(std::move(obj));
+        }
+    }
+#endif
 }
 
 int main()

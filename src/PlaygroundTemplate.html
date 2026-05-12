@@ -31,6 +31,7 @@
 <body>
     <div id="controls">
         <button id="startBtn" disabled>Start</button>
+        <button id="addCowBtn" disabled>Add Cow</button>
         <button id="fsBtn">Fullscreen</button>
         <label for="sensitivity">Sensitivity:</label>
         <input id="sensitivity" type="range" min="0.1" max="10" step="0.1" value="1">
@@ -61,7 +62,9 @@
             onRuntimeInitialized: function () {
                 document.getElementById('status').innerText = 'Runtime initialized. Click Start.';
                 var btn = document.getElementById('startBtn');
+                var addCowBtn = document.getElementById('addCowBtn');
                 btn.disabled = false;
+                addCowBtn.disabled = true;
                 var started = false;
                 btn.onclick = function () {
                     if (!started) {
@@ -69,9 +72,25 @@
                         Module.callMain([]);
                         started = true;
                         btn.textContent = 'Stop';
+                        // Enable Add Cow after engine start
+                        addCowBtn.disabled = false;
                     } else {
                         // Stop: reload page to tear down runtime and return to start UI
                         window.location.reload();
+                    }
+                };
+
+                addCowBtn.onclick = function () {
+                    try {
+                        if (Module._spawnCow) {
+                            Module._spawnCow();
+                        } else if (typeof Module.ccall === 'function') {
+                            Module.ccall('spawnCow', 'void', [], []);
+                        } else {
+                            Module.print('spawnCow not available');
+                        }
+                    } catch (e) {
+                        Module.print('Error calling spawnCow: ' + e);
                     }
                 };
 

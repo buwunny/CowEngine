@@ -388,3 +388,13 @@ void Scene::addPlayer(std::unique_ptr<Player> pl, Window *window, PhysicsWorld &
     // remember physics world for later reload cleanup
     physicsWorld = &physics;
 }
+
+void Scene::addObject(std::unique_ptr<Object> obj)
+{
+    if (!obj)
+        return;
+    // If a physics world is present, register the rigid body
+    if (physicsWorld && obj->getRigidBody())
+        physicsWorld->addRigidBody(obj->getRigidBody());
+    objects.push_back(std::move(obj));
+}

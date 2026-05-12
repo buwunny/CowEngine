@@ -31,6 +31,7 @@ public:
 
     void addPlayer(std::unique_ptr<Player> player, Window *window, PhysicsWorld &physics);
     Player *getPlayer() { return player.get(); }
+    void addObject(std::unique_ptr<Object> obj);
 
     void addRigidBodiesToWorld(PhysicsWorld &physics)
     {
