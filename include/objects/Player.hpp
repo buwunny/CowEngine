@@ -35,6 +35,7 @@ private:
     float lastX, lastY;
     bool firstMouse;
     bool lastTabPressed;
+    bool lastCPressed = false;
     float pendingMouseDx = 0.0f;
     float pendingMouseDy = 0.0f;
 };

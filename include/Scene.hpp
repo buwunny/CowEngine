@@ -33,6 +33,9 @@ public:
     Player *getPlayer() { return player.get(); }
     void addObject(std::unique_ptr<Object> obj);
 
+    // Global accessor for the active scene (set when a scene registers a player)
+    static Scene *getCurrent() { return s_current; }
+
     void addRigidBodiesToWorld(PhysicsWorld &physics)
     {
         for (auto &obj : objects)
@@ -74,6 +77,7 @@ private:
     PhysicsWorld *physicsWorld = nullptr;
     std::chrono::steady_clock::time_point lastAutoReloadTime = std::chrono::steady_clock::time_point::min();
     std::chrono::milliseconds reloadDebounce{500};
+    static Scene *s_current;
 };
 
 #endif // SCENE_HPP

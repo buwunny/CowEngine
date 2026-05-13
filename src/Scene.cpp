@@ -1,6 +1,10 @@
 #include "Scene.hpp"
+#include <iostream>
 #include "meshes/AssetManager.hpp"
 #include "../cow_mesh.hpp"
+
+// define static current scene pointer
+Scene *Scene::s_current = nullptr;
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -387,6 +391,9 @@ void Scene::addPlayer(std::unique_ptr<Player> pl, Window *window, PhysicsWorld &
         physics.addRigidBody(player->getRigidBody());
     // remember physics world for later reload cleanup
     physicsWorld = &physics;
+
+    // Register this scene as the current active scene for runtime spawns
+    Scene::s_current = this;
 }
 
 void Scene::addObject(std::unique_ptr<Object> obj)
