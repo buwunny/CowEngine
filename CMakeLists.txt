@@ -7,8 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 include(FetchContent)
 
 # vcpkg support guidance
-# Default to OFF to avoid requiring vcpkg when using Emscripten toolchain
-option(USE_VCPKG "Enable vcpkg usage (requires providing CMAKE_TOOLCHAIN_FILE at configure time)" OFF)
+option(USE_VCPKG "Enable vcpkg usage (requires providing CMAKE_TOOLCHAIN_FILE at configure time)" ON)
 if(EMSCRIPTEN)
     # ensure vcpkg checks do not run for web builds
     set(USE_VCPKG OFF CACHE BOOL "Enable vcpkg usage (requires providing CMAKE_TOOLCHAIN_FILE at configure time)" FORCE)
@@ -42,6 +41,7 @@ set(SOURCES
     src/Camera.cpp
     src/InputHandler.cpp
     src/Window.cpp
+    src/Application.cpp
 )
 
 if(NOT EMSCRIPTEN)

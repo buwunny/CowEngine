@@ -26,6 +26,7 @@ public:
     void renderTransparent(Window &window, Shader &shader) {};
     void renderFill(Window &window, Shader &shader) {};
     void resetInputState();
+    Camera *getCamera() { return camera; }
 
 private:
     Camera *camera;
