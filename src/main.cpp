@@ -24,7 +24,7 @@
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 // Emscripten requires a non-blocking main loop (use emscripten_set_main_loop).
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
@@ -96,7 +96,7 @@ void main_loop()
 // Expose a spawn function to JavaScript so the page can add cows at runtime.
 extern "C"
 {
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     EMSCRIPTEN_KEEPALIVE
     void spawnCow()
     {

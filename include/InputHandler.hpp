@@ -16,7 +16,7 @@ public:
     ~InputHandler();
 
     void processInput(Window *window, float deltaTime);
-    void processMouse(float xpos, float ypos);
+    void processMouse(GLFWwindow *window, float xpos, float ypos);
     static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
 
 private:

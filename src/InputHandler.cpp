@@ -35,7 +35,7 @@ void InputHandler::processInput(Window *window, float deltaTime)
     camera->setPosition(cameraPos);
 }
 
-void InputHandler::processMouse(float xpos, float ypos)
+void InputHandler::processMouse(GLFWwindow *window, float xpos, float ypos)
 {
     if (firstMouse)
     {
@@ -49,6 +49,13 @@ void InputHandler::processMouse(float xpos, float ypos)
     lastX = xpos;
     lastY = ypos;
 
+    // Apply device-pixel scaling and global sensitivity, and the same pointer-lock multiplier
+    float dpr = getDevicePixelRatioFor(window);
+    double sens = getMouseSensitivityFor(window);
+    const float pointerLockMultiplier = 5.0f;
+    xoffset = xoffset * dpr * static_cast<float>(sens) * pointerLockMultiplier;
+    yoffset = yoffset * dpr * static_cast<float>(sens) * pointerLockMultiplier;
+
     this->camera->look(xoffset, yoffset);
 }
 
@@ -57,6 +64,6 @@ void InputHandler::mouse_callback(GLFWwindow *window, double xpos, double ypos)
     InputHandler *inputHandler = static_cast<InputHandler *>(glfwGetWindowUserPointer(window));
     if (inputHandler)
     {
-        inputHandler->processMouse(xpos, ypos);
+        inputHandler->processMouse(window, static_cast<float>(xpos), static_cast<float>(ypos));
     }
 }

@@ -7,11 +7,25 @@
 #include <cctype>
 
 EM_JS(double, js_get_mouse_sensitivity, (), {
-    try { return Module.mouseSensitivity ? Module.mouseSensitivity : 1.0; } catch (e) { return 1.0; }
+    try
+    {
+        return Module.mouseSensitivity ? Module.mouseSensitivity : 1.0;
+    }
+    catch (e)
+    {
+        return 1.0;
+    }
 });
 
 EM_JS(int, js_is_canvas_pointer_locked, (), {
-    try { return (Module && Module.canvas && Object.is(document.pointerLockElement, Module.canvas)) ? 1 : 0; } catch (e) { return 0; }
+    try
+    {
+        return (Module && Module.canvas && Object.is(document.pointerLockElement, Module.canvas)) ? 1 : 0;
+    }
+    catch (e)
+    {
+        return 0;
+    }
 });
 
 static std::unordered_set<int> s_keyState;
@@ -144,6 +158,30 @@ static EM_BOOL em_keyup_callback(int eventType, const EmscriptenKeyboardEvent *e
     return EM_FALSE;
 }
 #endif
+
+// Provide cross-platform helpers declared in Window.hpp
+double getMouseSensitivityFor(GLFWwindow *window)
+{
+#if defined(__EMSCRIPTEN__)
+    return js_get_mouse_sensitivity();
+#else
+    (void)window;
+    return 1.0;
+#endif
+}
+
+float getDevicePixelRatioFor(GLFWwindow *window)
+{
+#if defined(__EMSCRIPTEN__)
+    return static_cast<float>(emscripten_get_device_pixel_ratio());
+#else
+    if (!window)
+        return 1.0f;
+    float xscale = 1.0f, yscale = 1.0f;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    return xscale;
+#endif
+}
 
 Window::Window(int width, int height, const char *title)
 {

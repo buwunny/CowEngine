@@ -53,21 +53,16 @@ void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics
     if (!window->isCursorDisabled())
         return;
 
-    // Apply accumulated pointer-lock mouse deltas once per frame with exponential smoothing
+    // Apply accumulated pointer-lock mouse deltas once per frame (no smoothing)
     {
-        // smoothing rate (higher = faster response, lower = smoother)
-        const float smoothingK = 20.0f;
-        float alpha = 1.0f - std::exp(-smoothingK * deltaTime);
-        smoothedMouseDx += (pendingMouseDx - smoothedMouseDx) * alpha;
-        smoothedMouseDy += (pendingMouseDy - smoothedMouseDy) * alpha;
         // multiplier to match desktop sensitivity
         const float pointerLockMultiplier = 5.0f;
         // apply small movements even if below integer thresholds
-        if (std::fabs(smoothedMouseDx) > 0.0001f || std::fabs(smoothedMouseDy) > 0.0001f)
+        if (std::fabs(pendingMouseDx) > 0.0001f || std::fabs(pendingMouseDy) > 0.0001f)
         {
-            this->camera->look(smoothedMouseDx * pointerLockMultiplier, -smoothedMouseDy * pointerLockMultiplier);
+            this->camera->look(pendingMouseDx * pointerLockMultiplier, -pendingMouseDy * pointerLockMultiplier);
         }
-        // clear pending deltas (they've been integrated into smoothed state)
+        // clear pending deltas
         pendingMouseDx = 0.0f;
         pendingMouseDy = 0.0f;
     }
@@ -110,7 +105,7 @@ void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics
     camera->setPosition(glm::vec3(pos.getX(), pos.getY() + 1.0f, pos.getZ()));
 }
 
-void Player::processMouse(float xpos, float ypos)
+void Player::processMouse(GLFWwindow *window, double xpos, double ypos)
 {
     if (firstMouse)
     {
@@ -119,10 +114,17 @@ void Player::processMouse(float xpos, float ypos)
         firstMouse = false;
     }
 
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos;
+    float xoffset = static_cast<float>(xpos - lastX);
+    float yoffset = static_cast<float>(lastY - ypos);
     lastX = xpos;
     lastY = ypos;
+
+    // Apply device-pixel scaling and global sensitivity, plus pointer-lock multiplier
+    float dpr = getDevicePixelRatioFor(window);
+    double sens = getMouseSensitivityFor(window);
+    const float pointerLockMultiplier = 5.0f;
+    xoffset = xoffset * dpr * static_cast<float>(sens) * pointerLockMultiplier;
+    yoffset = yoffset * dpr * static_cast<float>(sens) * pointerLockMultiplier;
 
     this->camera->look(xoffset, yoffset);
 }
@@ -149,5 +151,5 @@ void Player::mouse_callback(GLFWwindow *window, double xpos, double ypos)
     int mode = glfwGetInputMode(window, GLFW_CURSOR);
     if (mode != GLFW_CURSOR_DISABLED)
         return;
-    player->processMouse(xpos, ypos);
+    player->processMouse(window, xpos, ypos);
 }

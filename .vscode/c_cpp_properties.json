@@ -5,7 +5,6 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/include",
-                "${workspaceFolder}/glad/include",
                 "/usr/include",
                 "/usr/local/include",
                 "/usr/include/GL",

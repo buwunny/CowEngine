@@ -16,7 +16,7 @@ public:
     ~StaticMesh();
 
     void render() override;
-    void renderWireframe();
+    void renderWireframe() override;
 };
 
 #endif // STATIC_MESH_HPP

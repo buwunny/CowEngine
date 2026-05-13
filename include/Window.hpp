@@ -47,4 +47,7 @@ private:
     GLFWwindow *window;
     bool cursorDisabled = true;
 };
+// Helpers to query mouse sensitivity and device pixel ratio for a given GLFW window
+double getMouseSensitivityFor(GLFWwindow *window);
+float getDevicePixelRatioFor(GLFWwindow *window);
 #endif // WINDOW_HPP
