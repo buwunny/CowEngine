@@ -49,12 +49,11 @@ void InputHandler::processMouse(GLFWwindow *window, float xpos, float ypos)
     lastX = xpos;
     lastY = ypos;
 
-    // Apply device-pixel scaling and global sensitivity, and the same pointer-lock multiplier
+    // Apply device-pixel scaling and global sensitivity
     float dpr = getDevicePixelRatioFor(window);
     double sens = getMouseSensitivityFor(window);
-    const float pointerLockMultiplier = 5.0f;
-    xoffset = xoffset * dpr * static_cast<float>(sens) * pointerLockMultiplier;
-    yoffset = yoffset * dpr * static_cast<float>(sens) * pointerLockMultiplier;
+    xoffset = xoffset * dpr * static_cast<float>(sens);
+    yoffset = yoffset * dpr * static_cast<float>(sens);
 
     this->camera->look(xoffset, yoffset);
 }

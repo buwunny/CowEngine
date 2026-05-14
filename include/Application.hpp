@@ -7,6 +7,7 @@
 #include "Camera.hpp"
 #include "Scene.hpp"
 #include "Shader.hpp"
+#include "ImGuiLayer.hpp"
 
 class Application
 {
@@ -29,6 +30,7 @@ private:
     Camera *camera = nullptr;
     Scene *scene = nullptr;
     Shader *shader = nullptr;
+    ImGuiLayer *imguiLayer = nullptr;
 
     double lastFrame = 0.0;
 

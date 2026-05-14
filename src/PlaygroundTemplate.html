@@ -5,49 +5,89 @@
     <meta charset="utf-8">
     <title>CowEngine - Playground</title>
     <style>
+        html,
         body {
-            font-family: Arial;
-            margin: 16px;
+            height: 100%;
+            margin: 0;
             background: #111;
-            color: #eee
+            color: #eee;
+            font-family: Arial;
         }
 
-        #controls {
-            margin-bottom: 12px
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #main {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            box-sizing: border-box;
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            flex: 1 1 auto;
+            background: #000;
+        }
+
+        /* overlays */
+        .overlay {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            /* default: don't intercept unless explicitly enabled */
+        }
+
+        #loadingOverlay {
+            background: rgba(0, 0, 0, 0.85);
+            color: #ddd;
+            z-index: 40;
+            pointer-events: auto;
+            flex-direction: column;
+        }
+
+        #startOverlay {
+            position: absolute;
+            z-index: 30;
+            color: #fff;
+            text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+            font-size: 20px;
+            pointer-events: auto;
+            cursor: pointer;
         }
 
         #output {
-            width: 90%;
-            height: 200px;
-            background: #000;
-            color: rgb(255, 0, 0);
-            font-family: monospace;
-            padding: 8px;
-            overflow: auto
+            display: none;
         }
     </style>
 </head>
 
 <body>
-    <div id="controls">
-        <button id="startBtn" disabled>Start</button>
-        <button id="addCowBtn" disabled>Add Cow</button>
-        <button id="fsBtn">Fullscreen</button>
-        <label for="sensitivity">Sensitivity:</label>
-        <input id="sensitivity" type="range" min="0.1" max="10" step="0.1" value="1">
-        <span id="sensVal">1.0</span>
-        <span id="status">Waiting for runtime...</span>
-    </div>
-    <div>
-        <canvas id="canvas" width="1280" height="720"
-            style="display:block;width:100%;height:auto;max-width:100%;background:#000;border:1px solid #333"></canvas>
-    </div>
-    <div>
+    <div id="main" style="position:relative;">
+        <canvas id="canvas"></canvas>
+        <div id="loadingOverlay" class="overlay">
+            <div>
+                <div style="margin-bottom:12px; font-size:24px;">Loading CowEngine...</div>
+                <div style="font-size:14px; color:#bbb;">Initializing runtime and resources. Please wait.</div>
+            </div>
+        </div>
+        <div id="startOverlay" class="overlay" style="display:none;">
+            <div id="startText">Click to start</div>
+        </div>
         <textarea id="output" readonly></textarea>
     </div>
 
     <script>
-        // Predefine Module to avoid auto-running main; expose runtime hook and start button
+        // Predefine Module to avoid auto-running main; expose runtime hook and start-on-canvas-click
         var output = document.getElementById('output');
         function appendLog(msg) {
             output.value += msg + '\n';
@@ -58,27 +98,17 @@
         function resizeCanvas() {
             var canvas = document.getElementById('canvas');
             if (!canvas) return;
-            var controls = document.getElementById('controls');
-            var outputEl = document.getElementById('output');
             var ratio = window.devicePixelRatio || 1;
-            var availableWidth = window.innerWidth - 32; // account for body margins
-            var availableHeight;
+            var availableWidth, availableHeight;
             if (document.fullscreenElement === canvas) {
                 availableWidth = window.innerWidth;
                 availableHeight = window.innerHeight;
-                canvas.style.width = '100vw';
-                canvas.style.height = '100vh';
             } else {
-                // Calculate exact space between controls bottom and output top
-                var controlsBottom = controls ? controls.getBoundingClientRect().bottom : 0;
-                var outputTop = outputEl ? outputEl.getBoundingClientRect().top : window.innerHeight;
-                // availableHeight is the vertical gap between controls and output
-                availableHeight = Math.max(128, Math.floor(outputTop - controlsBottom - 8));
-                canvas.style.width = availableWidth + 'px';
-                canvas.style.height = availableHeight + 'px';
+                availableWidth = canvas.clientWidth;
+                availableHeight = canvas.clientHeight;
             }
-            canvas.width = Math.floor(availableWidth * ratio);
-            canvas.height = Math.floor((availableHeight || canvas.clientHeight) * ratio);
+            canvas.width = Math.max(1, Math.floor(availableWidth * ratio));
+            canvas.height = Math.max(1, Math.floor(availableHeight * ratio));
             if (typeof Module !== 'undefined' && Module) {
                 Module.canvas = canvas;
             }
@@ -90,76 +120,20 @@
         document.addEventListener('fullscreenchange', resizeCanvas);
 
         var Module = {
-            noInitialRun: true,
+            noInitialRun: false,
             print: function () { var s = Array.prototype.join.call(arguments, ' '); console.log(s); appendLog(s); },
             printErr: function () { var s = Array.prototype.join.call(arguments, ' '); console.error(s); appendLog('ERR: ' + s); },
-            setStatus: function (s) { document.getElementById('status').innerText = s; appendLog('[status] ' + s); },
+            setStatus: function (s) { appendLog('[status] ' + s); },
             onRuntimeInitialized: function () {
-                document.getElementById('status').innerText = 'Runtime initialized. Click Start.';
-                var btn = document.getElementById('startBtn');
-                var addCowBtn = document.getElementById('addCowBtn');
-                btn.disabled = false;
-                addCowBtn.disabled = true;
-                var started = false;
-                btn.onclick = function () {
-                    if (!started) {
-                        Module.print('Calling main...');
-                        Module.callMain([]);
-                        started = true;
-                        btn.textContent = 'Stop';
-                        // Enable Add Cow after engine start
-                        addCowBtn.disabled = false;
-                    } else {
-                        // Stop: reload page to tear down runtime and return to start UI
-                        window.location.reload();
-                    }
-                };
-
-                addCowBtn.onclick = function () {
-                    try {
-                        if (Module._spawnCow) {
-                            Module._spawnCow();
-                        } else if (typeof Module.ccall === 'function') {
-                            Module.ccall('spawnCow', 'void', [], []);
-                        } else {
-                            Module.print('spawnCow not available');
-                        }
-                    } catch (e) {
-                        Module.print('Error calling spawnCow: ' + e);
-                    }
-                };
-
-                // Sensitivity slider: expose as Module.mouseSensitivity for C++ to read
-                var sens = document.getElementById('sensitivity');
-                var sensVal = document.getElementById('sensVal');
-                Module.mouseSensitivity = parseFloat(sens.value);
-                sensVal.textContent = Module.mouseSensitivity.toFixed(1);
-                sens.addEventListener('input', function () {
-                    Module.mouseSensitivity = parseFloat(this.value);
-                    sensVal.textContent = Module.mouseSensitivity.toFixed(1);
-                });
-
-                // Fullscreen button and pointer lock
-                var fsBtn = document.getElementById('fsBtn');
-                fsBtn.onclick = function () {
-                    var canvas = document.getElementById('canvas');
-                    if (document.fullscreenElement) {
-                        document.exitFullscreen();
-                    } else {
-                        canvas.requestFullscreen();
-                    }
-                };
-
-                // Clicking the canvas requests pointer lock for better mouse control
-                var canvasEl = document.getElementById('canvas');
-                canvasEl.addEventListener('click', function () {
-                    if (document.pointerLockElement !== canvasEl) {
-                        canvasEl.requestPointerLock = canvasEl.requestPointerLock || canvasEl.mozRequestPointerLock || canvasEl.webkitRequestPointerLock;
-                        if (canvasEl.requestPointerLock) canvasEl.requestPointerLock();
-                    }
-                });
-
-                // (debug logging removed)
+                appendLog('Runtime initialized. Starting automatically.');
+                // hide loading and start overlays
+                var load = document.getElementById('loadingOverlay');
+                if (load) load.style.display = 'none';
+                var startO = document.getElementById('startOverlay');
+                if (startO) startO.style.display = 'none';
+                Module.mouseSensitivity = 1.0;
+                // Call main immediately now that runtime is ready
+                Module.print('Auto-start: main will be invoked by runtime.');
 
                 window.addEventListener('resize', resizeCanvas);
                 document.addEventListener('fullscreenchange', resizeCanvas);

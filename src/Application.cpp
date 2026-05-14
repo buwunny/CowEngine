@@ -1,8 +1,13 @@
 #include "Application.hpp"
+#include "ImGuiLayer.hpp"
+#include <imgui.h>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <cstdlib>
+#ifdef __EMSCRIPTEN__
+extern "C" void spawnCow();
+#endif
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -21,6 +26,7 @@ Application::~Application()
     delete camera;
     delete window;
     delete physics;
+    delete imguiLayer;
 }
 
 void Application::init()
@@ -40,6 +46,8 @@ void Application::init()
     camera->setPosition(glm::vec3(0.0f, 3.0f, 10.0f));
 
     shader = new Shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
+
+    imguiLayer = new ImGuiLayer(window);
 
 #ifdef __EMSCRIPTEN__
     lastFrame = emscripten_get_now() / 1000.0;
@@ -100,6 +108,33 @@ void Application::tick()
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    imguiLayer->newFrame();
+    // Custom engine/editor UI
+    ImGui::Begin("CowEngine");
+    ImGui::Text("FPS: %.1f", fpsTimer > 0.0 ? (double)fpsCount / fpsTimer : 0.0);
+    static float sensitivity = 1.0f;
+    if (ImGui::SliderFloat("Sensitivity", &sensitivity, 0.1f, 10.0f))
+    {
+#if defined(__EMSCRIPTEN__)
+        // propagate slider to JS Module variable used by the web input handler
+        std::ostringstream ss;
+        ss << "Module.mouseSensitivity = " << sensitivity;
+        emscripten_run_script(ss.str().c_str());
+#endif
+    }
+#if defined(__EMSCRIPTEN__)
+    if (ImGui::Button("Add Cow"))
+    {
+        spawnCow();
+    }
+    if (ImGui::Button("Lock Mouse"))
+    {
+        // Request pointer lock from JS as an explicit user gesture
+        emscripten_run_script("var c = Module.canvas; if (c && c.requestPointerLock) c.requestPointerLock();");
+    }
+#endif
+    ImGui::End();
+
     shader->use();
 
     glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
@@ -110,6 +145,8 @@ void Application::tick()
 
     scene->update();
     scene->render(*window, *shader);
+
+    imguiLayer->render();
 
     window->update();
 }

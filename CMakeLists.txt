@@ -44,6 +44,13 @@ set(SOURCES
     src/Application.cpp
 )
 
+# ImGui integration sources (present for both native and web builds)
+list(APPEND SOURCES
+    src/ImGuiLayer.cpp
+    src/imgui_impl_emscripten.cpp
+    
+)
+
 if(NOT EMSCRIPTEN)
     add_executable(CowEngine ${SOURCES})
 endif()
@@ -132,10 +139,19 @@ if(EMSCRIPTEN)
     )
     FetchContent_MakeAvailable(bullet_repo)
 
+    # Fetch Dear ImGui for web builds and build it into the wasm
+    FetchContent_Declare(
+        imgui_repo
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG master
+    )
+    FetchContent_MakeAvailable(imgui_repo)
+
     add_executable(CowEngine_web ${WEB_SOURCES})
 
     # Keep most headers/includes and definitions consistent
     target_include_directories(CowEngine_web PRIVATE ${CMAKE_SOURCE_DIR}/include ${bullet_repo_SOURCE_DIR}/src)
+    target_include_directories(CowEngine_web PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_definitions(CowEngine_web PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN)
 
     # Link libraries including Bullet built for EMSCRIPTEN so we use the
@@ -163,6 +179,23 @@ if(EMSCRIPTEN)
         OUTPUT_NAME "CowEngine"
         SUFFIX ".html"
     )
+
+    # Build a minimal imgui static library from the fetched repo so we can
+    # link it into the web target. We include the core sources and the
+    # OpenGL3 backend for rendering. Input is provided by a small
+    # imgui_impl_emscripten platform file implemented in src/.
+    add_library(imgui_web STATIC
+        ${imgui_repo_SOURCE_DIR}/imgui.cpp
+        ${imgui_repo_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_repo_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_repo_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_include_directories(imgui_web PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
+
+    # Link imgui into the web executable and expose USE_IMGUI to compile-time
+    target_link_libraries(CowEngine_web PRIVATE imgui_web)
+    target_compile_definitions(CowEngine_web PRIVATE USE_IMGUI)
 
     # Do not attempt to copy shaders at post-build for the web target (preloaded instead)
     # Copy our custom HTML shell into the web output so Pages serves our UI as index.html
