@@ -8,6 +8,8 @@
 #include "Scene.hpp"
 #include "Shader.hpp"
 #include "ImGuiLayer.hpp"
+#include "EditorUI.hpp"
+#include "InputHandler.hpp"
 
 class Application
 {
@@ -31,6 +33,14 @@ private:
     Scene *scene = nullptr;
     Shader *shader = nullptr;
     ImGuiLayer *imguiLayer = nullptr;
+    EditorUI *editorUI = nullptr;
+    InputHandler *editorInput = nullptr;
+
+    unsigned int gameFbo = 0;
+    unsigned int gameColor = 0;
+    unsigned int gameDepth = 0;
+    int gameFbWidth = 0;
+    int gameFbHeight = 0;
 
     double lastFrame = 0.0;
 
@@ -38,6 +48,7 @@ private:
     int fpsCount = 0;
     double fpsTimer = 0.0;
     bool lastRPressed = false;
+    bool lastTestingMode = false;
 };
 
 #endif // APPLICATION_HPP

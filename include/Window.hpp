@@ -42,6 +42,8 @@ public:
     static void framebuffer_size_callback(GLFWwindow *window, int width, int height);
     // Set the player instance to receive mouse move events on web builds
     static void setEmscriptenPlayer(Player *p);
+    using MouseDeltaCallback = void (*)(void *user, float dx, float dy);
+    static void setEmscriptenMouseDeltaCallback(MouseDeltaCallback cb, void *user);
 
 private:
     GLFWwindow *window;

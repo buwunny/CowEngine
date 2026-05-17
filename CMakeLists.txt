@@ -32,6 +32,7 @@ set(SOURCES
     src/meshes/CircleMesh.cpp
     src/meshes/StaticMesh.cpp
     src/meshes/AssetManager.cpp
+    src/objects/Object.cpp
     src/objects/Cube.cpp
     src/objects/StaticObject.cpp
     src/objects/Plane.cpp
@@ -42,6 +43,7 @@ set(SOURCES
     src/InputHandler.cpp
     src/Window.cpp
     src/Application.cpp
+    src/EditorUI.cpp
 )
 
 # ImGui integration sources (present for both native and web builds)
@@ -61,7 +63,6 @@ if(NOT EMSCRIPTEN)
     find_package(glfw3 CONFIG REQUIRED)
     find_package(glad CONFIG REQUIRED)
     find_package(OpenGL REQUIRED)
-    find_package(imgui CONFIG REQUIRED)
 endif()
 
 # GLM and nlohmann_json: prefer package configs, but provide simple FetchContent
@@ -90,18 +91,37 @@ endif()
 
 # Link imported targets provided by vcpkg / config packages
 if(NOT EMSCRIPTEN)
+    # Native ImGui docking build
+    FetchContent_Declare(
+        imgui_repo
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG docking
+    )
+    FetchContent_MakeAvailable(imgui_repo)
+
+    add_library(imgui_native STATIC
+        ${imgui_repo_SOURCE_DIR}/imgui.cpp
+        ${imgui_repo_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_repo_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_repo_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+        ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_include_directories(imgui_native PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
+    target_compile_definitions(imgui_native PRIVATE IMGUI_ENABLE_DOCKING)
+
     target_link_libraries(CowEngine PRIVATE
         glad::glad
         glfw
         glm::glm
         OpenGL::GL
         nlohmann_json::nlohmann_json
-        imgui::imgui
+        imgui_native
         BulletDynamics
         BulletCollision
         LinearMath
     )
-    target_compile_definitions(CowEngine PRIVATE USE_IMGUI ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL)
+    target_compile_definitions(CowEngine PRIVATE USE_IMGUI ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
     target_include_directories(CowEngine PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
 
     add_custom_command(TARGET CowEngine POST_BUILD
@@ -143,7 +163,7 @@ if(EMSCRIPTEN)
     FetchContent_Declare(
         imgui_repo
         GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG master
+        GIT_TAG docking
     )
     FetchContent_MakeAvailable(imgui_repo)
 
@@ -152,7 +172,7 @@ if(EMSCRIPTEN)
     # Keep most headers/includes and definitions consistent
     target_include_directories(CowEngine_web PRIVATE ${CMAKE_SOURCE_DIR}/include ${bullet_repo_SOURCE_DIR}/src)
     target_include_directories(CowEngine_web PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(CowEngine_web PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN)
+    target_compile_definitions(CowEngine_web PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN IMGUI_ENABLE_DOCKING)
 
     # Link libraries including Bullet built for EMSCRIPTEN so we use the
     # same native physics API on web and desktop.
@@ -192,6 +212,7 @@ if(EMSCRIPTEN)
         ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
     )
     target_include_directories(imgui_web PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
+    target_compile_definitions(imgui_web PRIVATE IMGUI_ENABLE_DOCKING)
 
     # Link imgui into the web executable and expose USE_IMGUI to compile-time
     target_link_libraries(CowEngine_web PRIVATE imgui_web)

@@ -17,14 +17,16 @@ public:
     Player(Camera *camera, glm::mat4 model = glm::mat4(1.0f));
     ~Player() = default;
 
+    const char *getTypeName() const override { return "Player"; }
+
     bool isOnGround(PhysicsWorld *physics);
     void processInput(Window *window, float deltaTime, PhysicsWorld *physics);
     void processMouse(GLFWwindow *window, double xpos, double ypos);
     void processMouseDelta(float dx, float dy);
     static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
-    void render(Window &window, Shader &shader) {};
-    void renderTransparent(Window &window, Shader &shader) {};
-    void renderFill(Window &window, Shader &shader) {};
+    void render(Window &window, Shader &shader) override {};
+    void renderTransparent(Window &window, Shader &shader) override {};
+    void renderFill(Window &window, Shader &shader) override {};
     void resetInputState();
     Camera *getCamera() { return camera; }
 

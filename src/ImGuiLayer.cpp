@@ -24,9 +24,40 @@ ImGuiLayer::ImGuiLayer(Window *window) : impl(new Impl())
     impl->window = window;
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui::StyleColorsDark();
     ImGuiIO &io = ImGui::GetIO();
-    // Note: docking/viewports may not be available in this ImGui version.
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    ImGui::StyleColorsDark();
+    ImGuiStyle &style = ImGui::GetStyle();
+    style.WindowRounding = 10.0f;
+    style.ChildRounding = 10.0f;
+    style.FrameRounding = 8.0f;
+    style.PopupRounding = 8.0f;
+    style.GrabRounding = 8.0f;
+    style.TabRounding = 8.0f;
+    style.WindowBorderSize = 0.0f;
+    style.FrameBorderSize = 0.0f;
+    style.ScrollbarRounding = 12.0f;
+    style.ScrollbarSize = 14.0f;
+
+    ImVec4 *colors = style.Colors;
+    colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.10f, 0.14f, 0.95f);
+    colors[ImGuiCol_TitleBg] = ImVec4(0.24f, 0.20f, 0.32f, 0.95f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.32f, 0.26f, 0.40f, 0.95f);
+    colors[ImGuiCol_Header] = ImVec4(0.33f, 0.29f, 0.46f, 0.88f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.45f, 0.40f, 0.60f, 0.92f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.52f, 0.46f, 0.68f, 1.00f);
+    colors[ImGuiCol_Button] = ImVec4(0.47f, 0.62f, 0.84f, 0.88f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.56f, 0.72f, 0.92f, 0.95f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.36f, 0.54f, 0.78f, 1.00f);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.18f, 0.27f, 0.90f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.30f, 0.27f, 0.40f, 0.95f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.35f, 0.32f, 0.48f, 1.00f);
+    colors[ImGuiCol_Tab] = ImVec4(0.20f, 0.20f, 0.30f, 0.85f);
+    colors[ImGuiCol_TabHovered] = ImVec4(0.40f, 0.35f, 0.55f, 0.95f);
+    colors[ImGuiCol_TabActive] = ImVec4(0.32f, 0.28f, 0.46f, 0.98f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.70f, 0.56f, 0.88f, 0.85f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.82f, 0.68f, 0.96f, 1.00f);
+    colors[ImGuiCol_CheckMark] = ImVec4(0.86f, 0.76f, 0.98f, 1.00f);
 #if defined(__EMSCRIPTEN__)
     ImGui_ImplEmscripten_Init();
     ImGui_ImplOpenGL3_Init("#version 300 es");

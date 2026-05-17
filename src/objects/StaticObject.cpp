@@ -1,7 +1,9 @@
 #include "objects/StaticObject.hpp"
+#include <string>
 
 StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsigned int *indices, size_t index_count, int floats_per_vertex, glm::mat4 model, glm::vec4 color, float mass)
 {
+    setName(std::string("StaticObject ") + std::to_string(getId()));
     mesh = std::make_shared<StaticMesh>(verts, vertex_count, indices, index_count, floats_per_vertex);
 
     // Compute tight AABB from vertex positions (assumes position is first 3 floats)
@@ -49,7 +51,7 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
         btVector3 inertia(0, 0, 0);
         if (mass != 0.0f)
         {
-            collisionShape->calculateLocalInertia(mass, inertia);
+            this->setMass(mass);
         }
 
         btTransform transform;
@@ -71,7 +73,7 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
     btVector3 localInertia(0, 0, 0);
     if (mass != 0.0f)
     {
-        collisionShape->calculateLocalInertia(mass, localInertia);
+        this->setMass(mass);
     }
     btTransform transform;
     transform.setFromOpenGLMatrix(glm::value_ptr(model));
@@ -85,6 +87,7 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
 
 StaticObject::StaticObject(std::shared_ptr<Mesh> sharedMesh, const float *verts, size_t vertex_count, const unsigned int *indices, size_t index_count, int floats_per_vertex, glm::mat4 model, glm::vec4 color, float mass)
 {
+    setName(std::string("StaticObject ") + std::to_string(getId()));
     // Use provided shared mesh for rendering; still compute collision shape from vertex data
     mesh = sharedMesh;
 
@@ -132,7 +135,7 @@ StaticObject::StaticObject(std::shared_ptr<Mesh> sharedMesh, const float *verts,
         btVector3 inertia(0, 0, 0);
         if (mass != 0.0f)
         {
-            collisionShape->calculateLocalInertia(mass, inertia);
+            this->setMass(mass);
         }
 
         btTransform transform;

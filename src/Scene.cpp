@@ -129,6 +129,9 @@ bool Scene::loadFromJSON(const std::string &path)
                 // Model matrix can be provided directly as a flat 16-array (compatibility),
                 // or as user-friendly transform fields: position, rotation (deg), scale.
                 glm::mat4 model = glm::mat4(1.0f);
+                glm::vec3 pos = glm::vec3(0.0f);
+                glm::vec3 rot = glm::vec3(0.0f);
+                glm::vec3 scl = glm::vec3(1.0f);
                 if (obj.contains("model") && obj["model"].is_array() && obj["model"].size() == 16)
                 {
                     glm::mat4 m;
@@ -151,9 +154,9 @@ bool Scene::loadFromJSON(const std::string &path)
                         return def;
                     };
 
-                    glm::vec3 pos = getVec3(obj, "position", glm::vec3(0.0f));
-                    glm::vec3 rot = getVec3(obj, "rotation", glm::vec3(0.0f)); // degrees: pitch,x ; yaw,y ; roll,z
-                    glm::vec3 scl = getVec3(obj, "scale", glm::vec3(1.0f));
+                    pos = getVec3(obj, "position", glm::vec3(0.0f));
+                    rot = getVec3(obj, "rotation", glm::vec3(0.0f)); // degrees: pitch,x ; yaw,y ; roll,z
+                    scl = getVec3(obj, "scale", glm::vec3(1.0f));
 
                     model = glm::translate(glm::mat4(1.0f), pos);
                     // Apply yaw (y), pitch (x), roll (z) in that order
@@ -206,17 +209,19 @@ bool Scene::loadFromJSON(const std::string &path)
                 }
 
                 float mass = obj.value("mass", 0.0f);
+                std::string name = obj.value("name", "");
 
+                std::unique_ptr<Object> newObject;
                 if (type == "Plane")
                 {
                     float length = obj.value("length", 100.0f);
                     float width = obj.value("width", 100.0f);
-                    objects.push_back(std::make_unique<Plane>(length, width, model, color, mass));
+                    newObject = std::make_unique<Plane>(length, width, model, color, mass);
                 }
                 else if (type == "Cube")
                 {
                     int size = obj.value("size", 1);
-                    objects.push_back(std::make_unique<Cube>(size, model, color, mass));
+                    newObject = std::make_unique<Cube>(size, model, color, mass);
                 }
                 else // StaticObject (mesh)
                 {
@@ -235,12 +240,22 @@ bool Scene::loadFromJSON(const std::string &path)
 
                     if (mesh)
                     {
-                        // Use mesh raw data for collision generation
                         const auto &verts = mesh->getVertices();
                         const auto &inds = mesh->getIndices();
                         int stride = mesh->getFloatsPerVertex();
-                        objects.push_back(std::make_unique<StaticObject>(mesh, verts.data(), verts.size() / stride, inds.data(), inds.size(), stride, model, color, mass));
+                        newObject = std::make_unique<StaticObject>(mesh, verts.data(), verts.size() / stride, inds.data(), inds.size(), stride, model, color, mass);
                     }
+                }
+
+                if (newObject)
+                {
+                    newObject->setInitialModel(model);
+                    newObject->setTransform(pos, rot, scl);
+                    newObject->setColor(color);
+                    newObject->setMass(mass);
+                    if (!name.empty())
+                        newObject->setName(name);
+                    objects.push_back(std::move(newObject));
                 }
             }
             catch (const std::exception &e)
@@ -285,8 +300,6 @@ bool Scene::loadFromJSON(const std::string &path)
     // remember resolved path for hot-reload
     scenePath = chosen.string();
     lastWriteTime = fs::last_write_time(chosen);
-
-    std::cerr << "Scene: loaded " << objects.size() << " objects from " << path << std::endl;
     return true;
 }
 
@@ -301,24 +314,28 @@ bool Scene::saveToJSON(const std::string &path)
         if (dynamic_cast<Plane *>(o.get()))
         {
             obj["type"] = "Plane";
+            obj["length"] = dynamic_cast<Plane *>(o.get())->getLength();
+            obj["width"] = dynamic_cast<Plane *>(o.get())->getWidth();
         }
         else if (dynamic_cast<Cube *>(o.get()))
         {
             obj["type"] = "Cube";
+            obj["size"] = dynamic_cast<Cube *>(o.get())->getSize();
         }
         else
         {
             obj["type"] = "StaticObject";
             // If mesh present, attempt to reference by name not available here; leave blank
         }
-        // write model matrix as flat array
-        glm::mat4 m = o->getModel();
-        obj["model"] = json::array();
-        for (int i = 0; i < 16; ++i)
-            obj["model"].push_back(m[i / 4][i % 4]);
+        glm::vec3 scale, translation, rotation;
+        o->getTransform(translation, rotation, scale);
+        obj["position"] = {translation.x, translation.y, translation.z};
+        obj["rotation"] = {rotation.x, rotation.y, rotation.z};
+        obj["scale"] = {scale.x, scale.y, scale.z};
 
-        glm::vec4 c = o->getColor();
-        obj["color"] = {c.r, c.g, c.b, c.a};
+        obj["color"] = o->getColorString();
+        obj["name"] = o->getName();
+        obj["mass"] = o->getMass();
 
         j["objects"].push_back(obj);
     }
@@ -351,7 +368,6 @@ void Scene::checkReload()
             return;
         }
         lastAutoReloadTime = now;
-        std::cerr << "Scene: detected change in " << scenePath << ", reloading." << std::endl;
         loadFromJSON(scenePath);
     }
 }
@@ -364,7 +380,7 @@ void Scene::forceReload()
     fs::path p(scenePath);
     if (!fs::exists(p))
         return;
-    std::cerr << "Scene: force reload requested for " << scenePath << std::endl;
+    std::cout << "Scene: force reload requested for " << scenePath << std::endl;
     loadFromJSON(scenePath);
     // update auto-reload timestamp to avoid immediate auto-reloads
     lastAutoReloadTime = std::chrono::steady_clock::now();

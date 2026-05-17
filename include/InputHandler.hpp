@@ -17,6 +17,7 @@ public:
 
     void processInput(Window *window, float deltaTime);
     void processMouse(GLFWwindow *window, float xpos, float ypos);
+    void processMouseDelta(float dx, float dy);
     static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
 
 private:
@@ -24,5 +25,7 @@ private:
     float movementSpeed;
     float lastX, lastY;
     bool firstMouse;
+    float pendingMouseDx = 0.0f;
+    float pendingMouseDy = 0.0f;
 };
 #endif // INPUTHANDLER_HPP

@@ -231,8 +231,6 @@ Window::Window(int width, int height, const char *title)
     }
 
     glfwMakeContextCurrent(window);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    cursorDisabled = true;
 
     // Initialize GL function loader after creating the OpenGL context (glad).
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -270,8 +268,17 @@ bool Window::toggleCursor()
 {
     cursorDisabled = !cursorDisabled;
 #if defined(__EMSCRIPTEN__)
-    // No-op on web for now
-    return cursorDisabled;
+    // On web, cursor visibility is tied to pointer lock; toggle pointer lock state
+    if (js_is_canvas_pointer_locked())
+    {
+        emscripten_exit_pointerlock();
+        return false;
+    }
+    else
+    {
+        emscripten_request_pointerlock("#canvas", EM_TRUE);
+        return true;
+    }
 #else
     glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
     return cursorDisabled;
@@ -283,6 +290,15 @@ void Window::setCursorDisabled(bool disabled)
     cursorDisabled = disabled;
 #if !(defined(__EMSCRIPTEN__))
     glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+#else
+    if (disabled)
+    {
+        emscripten_request_pointerlock("#canvas", EM_TRUE);
+    }
+    else
+    {
+        emscripten_exit_pointerlock();
+    }
 #endif
 }
 

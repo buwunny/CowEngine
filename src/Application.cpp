@@ -1,6 +1,9 @@
 #include "Application.hpp"
 #include "ImGuiLayer.hpp"
+#include "EditorUI.hpp"
 #include <imgui.h>
+#include <algorithm>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -21,12 +24,20 @@ Application::Application()
 
 Application::~Application()
 {
+    if (gameDepth)
+        glDeleteRenderbuffers(1, &gameDepth);
+    if (gameColor)
+        glDeleteTextures(1, &gameColor);
+    if (gameFbo)
+        glDeleteFramebuffers(1, &gameFbo);
     delete shader;
     delete scene;
     delete camera;
     delete window;
     delete physics;
     delete imguiLayer;
+    delete editorUI;
+    delete editorInput;
 }
 
 void Application::init()
@@ -48,6 +59,8 @@ void Application::init()
     shader = new Shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
 
     imguiLayer = new ImGuiLayer(window);
+    editorUI = new EditorUI();
+    editorInput = new InputHandler(camera);
 
 #ifdef __EMSCRIPTEN__
     lastFrame = emscripten_get_now() / 1000.0;
@@ -91,11 +104,41 @@ void Application::tick()
         fpsTimer = 0.0;
     }
 
-    physics->stepSimulation(delta, 10);
+    bool testingMode = editorUI && editorUI->isTestingMode();
+    if (testingMode != lastTestingMode)
+    {
+        if (!testingMode)
+            scene->forceReload();
 
-    if (scene->getPlayer())
-        scene->getPlayer()->processInput(window, delta, physics);
+        lastTestingMode = testingMode;
+    }
+    if (testingMode)
+        physics->stepSimulation(delta, 10);
 
+    ImGuiIO &io = ImGui::GetIO();
+    bool uiCapturing = io.WantCaptureMouse || io.WantCaptureKeyboard;
+    bool allowGameInput = editorUI && editorUI->isGameViewInputEnabled();
+    if (testingMode && scene->getPlayer() && (!uiCapturing || allowGameInput))
+        scene->getPlayer()
+            ->processInput(window, delta, physics);
+    if (!testingMode && editorInput && allowGameInput)
+    {
+
+        editorInput->processInput(window, delta);
+        // process mouse when in editor mode and game view is focused, only if cursor is disabled (e.g. on web)
+        if (editorUI && editorUI->isGameViewInputEnabled() && window->isCursorDisabled())
+        {
+#ifdef __EMSCRIPTEN__
+            EmscriptenMouseEvent mouseState;
+            emscripten_get_mouse_status(&mouseState);
+            editorInput->processMouseDelta(static_cast<float>(mouseState.movementX), static_cast<float>(-mouseState.movementY));
+#else
+            double mouseX, mouseY;
+            glfwGetCursorPos(window->getWindow(), &mouseX, &mouseY);
+            editorInput->processMouse(window->getWindow(), mouseX, mouseY);
+#endif
+        }
+    }
     // Resize viewport / compute aspect
     int width = 0, height = 0;
 #ifdef __EMSCRIPTEN__
@@ -103,48 +146,90 @@ void Application::tick()
 #else
     glfwGetFramebufferSize(window->getWindow(), &width, &height);
 #endif
-    if (width > 0 && height > 0)
-        glViewport(0, 0, width, height);
-
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     imguiLayer->newFrame();
-    // Custom engine/editor UI
-    ImGui::Begin("CowEngine");
-    ImGui::Text("FPS: %.1f", fpsTimer > 0.0 ? (double)fpsCount / fpsTimer : 0.0);
-    static float sensitivity = 1.0f;
-    if (ImGui::SliderFloat("Sensitivity", &sensitivity, 0.1f, 10.0f))
+    float fps = fpsTimer > 0.0 ? static_cast<float>(fpsCount / fpsTimer) : 0.0f;
+    if (editorUI)
+        editorUI->render(scene, window, physics, delta, fps);
+
+    float vpX = 0.0f, vpY = 0.0f, vpW = static_cast<float>(width), vpH = static_cast<float>(height);
+    float scaleX = 1.0f, scaleY = 1.0f;
+    if (editorUI && editorUI->getGameViewport(vpX, vpY, vpW, vpH, scaleX, scaleY))
     {
-#if defined(__EMSCRIPTEN__)
-        // propagate slider to JS Module variable used by the web input handler
-        std::ostringstream ss;
-        ss << "Module.mouseSensitivity = " << sensitivity;
-        emscripten_run_script(ss.str().c_str());
-#endif
+        vpW *= scaleX;
+        vpH *= scaleY;
     }
-#if defined(__EMSCRIPTEN__)
-    if (ImGui::Button("Add Cow"))
+
+    int targetW = std::max(1, static_cast<int>(vpW));
+    int targetH = std::max(1, static_cast<int>(vpH));
+    if (targetW < 2 || targetH < 2)
     {
-        spawnCow();
+        if (gameFbWidth > 1 && gameFbHeight > 1)
+        {
+            targetW = gameFbWidth;
+            targetH = gameFbHeight;
+        }
+        else
+        {
+            targetW = 2;
+            targetH = 2;
+        }
     }
-    if (ImGui::Button("Lock Mouse"))
+    if (gameFbo == 0 || targetW != gameFbWidth || targetH != gameFbHeight)
     {
-        // Request pointer lock from JS as an explicit user gesture
-        emscripten_run_script("var c = Module.canvas; if (c && c.requestPointerLock) c.requestPointerLock();");
+        if (gameDepth)
+            glDeleteRenderbuffers(1, &gameDepth);
+        if (gameColor)
+            glDeleteTextures(1, &gameColor);
+        if (gameFbo)
+            glDeleteFramebuffers(1, &gameFbo);
+
+        glGenFramebuffers(1, &gameFbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, gameFbo);
+
+        glGenTextures(1, &gameColor);
+        glBindTexture(GL_TEXTURE_2D, gameColor);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, targetW, targetH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gameColor, 0);
+
+        glGenRenderbuffers(1, &gameDepth);
+        glBindRenderbuffer(GL_RENDERBUFFER, gameDepth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, targetW, targetH);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, gameDepth);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        gameFbWidth = targetW;
+        gameFbHeight = targetH;
     }
-#endif
-    ImGui::End();
+
+    if (editorUI && gameColor)
+        editorUI->setGameTexture(static_cast<ImTextureID>(static_cast<uintptr_t>(gameColor)),
+                                 static_cast<float>(gameFbWidth), static_cast<float>(gameFbHeight));
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gameFbo);
+    glViewport(0, 0, gameFbWidth, gameFbHeight);
+    glClearColor(0.08f, 0.08f, 0.11f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     shader->use();
 
     glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 1000.0f);
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)gameFbWidth / (float)gameFbHeight, 0.1f, 1000.0f);
 
     shader->setViewMatrix(view);
     shader->setProjectionMatrix(projection);
 
     scene->update();
     scene->render(*window, *shader);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, width, height);
+    glClearColor(0.06f, 0.06f, 0.08f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     imguiLayer->render();
 

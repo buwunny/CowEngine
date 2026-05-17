@@ -7,6 +7,7 @@
 
 Player::Player(Camera *camera, glm::mat4 model)
 {
+    setName("Player");
     mass = 10.0f;
     movementSpeed = 100.0f;
     lastX = 1920 / 2;
@@ -73,7 +74,7 @@ void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics
 
                 glm::vec3 pos = camera->getPosition() + camera->getFront() * 2.0f;
                 pos.y += 1.0f;
-                float scale = 0.35f;
+                float scale = 0.1f;
                 glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
                 model = glm::scale(model, glm::vec3(scale));
 
@@ -82,7 +83,7 @@ void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics
                 float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
                 glm::vec4 color = glm::vec4(r, g, b, 1.0f);
 
-                float mass = 0.5f;
+                float mass = 10.0f;
                 if (cowMesh)
                 {
                     const auto &verts = cowMesh->getVertices();
@@ -93,7 +94,7 @@ void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics
                     sc->addObject(std::move(obj));
                     if (rb)
                     {
-                        float speed = 50.0f;
+                        float speed = 100.0f;
                         glm::vec3 dir = glm::normalize(camera->getFront());
                         rb->setLinearVelocity(btVector3(dir.x * speed, dir.y * speed, dir.z * speed));
                     }
@@ -134,8 +135,6 @@ void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics
         velocity -= rightDir * adjustedSpeed;
     if (window->isKeyPressed(GLFW_KEY_D))
         velocity += rightDir * adjustedSpeed;
-    if (window->isKeyPressed(GLFW_KEY_ESCAPE))
-        window->close();
     if (window->isKeyPressed(GLFW_KEY_SPACE) && isOnGround)
         velocity.setY(10.0f);
 

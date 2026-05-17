@@ -1,8 +1,10 @@
 #include "objects/Cube.hpp"
 #include <cstdio>
+#include <string>
 
-Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass)
+Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass) : size(size)
 {
+    setName(std::string("Cube ") + std::to_string(getId()));
     mesh = std::make_shared<CubeMesh>(size);
     collisionShape = std::make_unique<btBoxShape>(btVector3(size / 2.0f, size / 2.0f, size / 2.0f));
     // record scale and apply to collision shape before computing inertia
@@ -19,7 +21,6 @@ Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass)
     rigidBody.reset(new btRigidBody(rbInfo));
     // Ensure body is active and print debug info for web builds
     rigidBody->setActivationState(ACTIVE_TAG);
-    std::printf("Cube: created rigidBody=%p mass=%.3f active=%d\n", (void *)rigidBody.get(), (double)mass, rigidBody->getActivationState());
 
     this->color = color;
 }

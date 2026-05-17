@@ -134,7 +134,11 @@
                 Module.mouseSensitivity = 1.0;
                 // Call main immediately now that runtime is ready
                 Module.print('Auto-start: main will be invoked by runtime.');
-
+                // Block context menu on canvas for better right-click handling in the engine and editor
+                var canvas = document.getElementById('canvas');
+                if (canvas) {
+                    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+                }
                 window.addEventListener('resize', resizeCanvas);
                 document.addEventListener('fullscreenchange', resizeCanvas);
                 // initial sizing

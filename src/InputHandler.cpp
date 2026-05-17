@@ -3,8 +3,6 @@
 InputHandler::InputHandler(Camera *camera)
 {
     movementSpeed = 2.5f;
-    lastX = 400;
-    lastY = 300;
     firstMouse = true;
     this->camera = camera;
 }
@@ -29,9 +27,10 @@ void InputHandler::processInput(Window *window, float deltaTime)
         cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
     if (window->isKeyPressed(GLFW_KEY_D))
         cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
-    if (window->isKeyPressed(GLFW_KEY_ESCAPE))
-        window->close();
-
+    if (window->isKeyPressed(GLFW_KEY_SPACE))
+        cameraPos += cameraSpeed * cameraUp;
+    if (window->isKeyPressed(GLFW_KEY_LEFT_CONTROL))
+        cameraPos -= cameraSpeed * cameraUp;
     camera->setPosition(cameraPos);
 }
 
@@ -56,6 +55,11 @@ void InputHandler::processMouse(GLFWwindow *window, float xpos, float ypos)
     yoffset = yoffset * dpr * static_cast<float>(sens);
 
     this->camera->look(xoffset, yoffset);
+}
+
+void InputHandler::processMouseDelta(float dx, float dy)
+{
+    this->camera->look(dx, dy);
 }
 
 void InputHandler::mouse_callback(GLFWwindow *window, double xpos, double ypos)

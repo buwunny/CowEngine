@@ -6,7 +6,12 @@
         "glm",
         "nlohmann-json",
         "bullet3",
-        "imgui",
+        {
+            "name": "imgui",
+            "features": [
+                "docking-experimental"
+            ]
+        },
         "glad"
     ]
 }

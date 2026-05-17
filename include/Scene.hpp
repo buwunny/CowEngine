@@ -14,6 +14,7 @@
 #include <memory>
 #include <filesystem>
 #include <chrono>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
@@ -26,12 +27,21 @@ public:
     void populateDefault();
     bool loadFromJSON(const std::string &path);
     bool saveToJSON(const std::string &path);
+    bool saveToMemory(std::string &outData);
     void checkReload();
     void forceReload();
 
     void addPlayer(std::unique_ptr<Player> player, Window *window, PhysicsWorld &physics);
     Player *getPlayer() { return player.get(); }
     void addObject(std::unique_ptr<Object> obj);
+    size_t getObjectCount() const { return objects.size(); }
+    Object *getObjectByIndex(size_t index)
+    {
+        if (index >= objects.size())
+            return nullptr;
+        return objects[index].get();
+    }
+    const std::string &getScenePath() const { return scenePath; }
 
     // Global accessor for the active scene (set when a scene registers a player)
     static Scene *getCurrent() { return s_current; }

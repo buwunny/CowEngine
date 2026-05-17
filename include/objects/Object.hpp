@@ -1,9 +1,9 @@
 #ifndef OBJECT_HPP
 #define OBJECT_HPP
 
-#include "../meshes/Mesh.hpp"
-#include "../Window.hpp"
-#include "../Shader.hpp"
+#include "meshes/Mesh.hpp"
+#include "Window.hpp"
+#include "Shader.hpp"
 
 #if defined(__EMSCRIPTEN__)
 #include <GLES3/gl3.h>
@@ -11,14 +11,18 @@
 #include <glad/glad.h>
 #endif
 #include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <vector>
 #include <btBulletDynamicsCommon.h>
 #include <memory>
+#include <string>
 
 class Object
 {
 public:
+    Object();
     virtual ~Object() {}
+    virtual const char *getTypeName() const = 0;
     virtual void render(Window &window, Shader &shader) = 0;
     virtual void renderTransparent(Window &window, Shader &shader) = 0;
     virtual void renderFill(Window &window, Shader &shader) = 0;
@@ -38,6 +42,17 @@ public:
     };
     glm::mat4 getModel() { return model; };
     glm::vec4 getColor() { return color; };
+    std::string getColorString() const
+    {
+        char buffer[32];
+        snprintf(buffer, sizeof(buffer), "#%02X%02X%02X%02X",
+                 static_cast<int>(color.r * 255),
+                 static_cast<int>(color.g * 255),
+                 static_cast<int>(color.b * 255),
+                 static_cast<int>(color.a * 255));
+        return std::string(buffer);
+    }
+    void setColor(const glm::vec4 &value) { color = value; };
     std::shared_ptr<Mesh> getMesh() { return mesh; };
     void setMesh(std::shared_ptr<Mesh> m) { mesh = m; };
     void setModel(glm::mat4 model) { this->model = model; };
@@ -76,17 +91,48 @@ public:
         {
             collisionShape->setLocalScaling(btVector3(localScale.x, localScale.y, localScale.z));
         }
+        // Set transfrom, rotation, scale from the model matrix for use in JSON export
+        translation = glm::vec3(m[3][0], m[3][1], m[3][2]);
+        // Extract rotation in degrees (assuming no shearing)
+        rotation.x = glm::degrees(glm::atan(m[2][1], m[2][2])) * (m[2][2] < 0 ? -1.0f : 1.0f);   // pitch
+        rotation.y = glm::degrees(glm::atan(m[2][0], glm::length(glm::vec2(m[0][0], m[1][0])))); // yaw
+        rotation.z = glm::degrees(glm::atan(m[1][0], m[0][0])) * (m[0][0] < 0 ? -1.0f : 1.0f);   // roll
+        scale = localScale;
     };
     btRigidBody *getRigidBody() { return rigidBody.get(); };
     void setRigidBody(btRigidBody *rigidBody) { this->rigidBody.reset(rigidBody); };
     btCollisionShape *getCollisionShape() { return collisionShape.get(); };
     void setCollisionShape(btCollisionShape *shape) { this->collisionShape.reset(shape); };
 
+    int getId() const { return id; }
+    const std::string &getName() const { return name; }
+    void setName(const std::string &value) { name = value; }
+    void getTransform(glm::vec3 &pos, glm::vec3 &rotDeg, glm::vec3 &scale) const;
+    void setTransform(const glm::vec3 &pos, const glm::vec3 &rotDeg, const glm::vec3 &scale);
+    double getMass() const
+    {
+        return this->mass;
+    }
+    void setMass(double mass)
+    {
+        this->mass = mass;
+        if (rigidBody)
+        {
+            btVector3 inertia;
+            collisionShape->calculateLocalInertia(mass, inertia);
+            rigidBody->setMassProps(mass, inertia);
+        }
+    }
+
 protected:
     std::unique_ptr<btRigidBody> rigidBody;
     std::unique_ptr<btCollisionShape> collisionShape;
     std::unique_ptr<btMotionState> motionState;
     std::shared_ptr<Mesh> mesh;
+    glm::dvec3 translation = glm::dvec3(0.0f);
+    glm::dvec3 rotation = glm::dvec3(0.0f);
+    glm::dvec3 scale = glm::dvec3(1.0f);
+    double mass = 0.0;
     glm::vec4 color;
     glm::mat4 model;
     glm::mat4 modelNoScale;
@@ -94,6 +140,9 @@ protected:
     bool wireframe;
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
+
+    int id = 0;
+    std::string name;
 };
 
 #endif // OBJECT_HPP
