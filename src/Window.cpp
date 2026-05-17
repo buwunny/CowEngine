@@ -2,6 +2,7 @@
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/html5.h>
 #include <emscripten/emscripten.h>
+#include <imgui_internal.h>
 #include <unordered_set>
 #include <cstring>
 #include <cctype>
@@ -50,6 +51,24 @@ static EM_BOOL em_mousemove_callback(int eventType, const EmscriptenMouseEvent *
     float dy = static_cast<float>(e->movementY * dpr * jsSens);
     s_player_for_mouse->processMouseDelta(dx, dy);
     return EM_TRUE;
+}
+
+static EM_BOOL em_on_mouse_down(int eventType, const EmscriptenMouseEvent *e, void *userData)
+{
+    if (!e)
+        return EM_FALSE;
+
+    if (e->button == 2)
+    {
+        bool isDown = (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN);
+
+        // Manually inject the right-click event into ImGui's IO backend
+        ImGuiIO &io = ImGui::GetIO();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, isDown);
+
+        return EM_TRUE; // Consume the event so it doesn't bubble up
+    }
+    return EM_FALSE; // Pass other buttons (like left-click) to GLFW's native handler
 }
 
 static EM_BOOL em_keydown_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData)
@@ -101,6 +120,21 @@ static EM_BOOL em_keydown_callback(int eventType, const EmscriptenKeyboardEvent 
     if (std::strcmp(e->key, "ArrowDown") == 0)
     {
         s_keyState.insert(GLFW_KEY_DOWN);
+        return EM_TRUE;
+    }
+    if (std::strcmp(e->key, "Control") == 0 || std::strcmp(e->key, "ControlLeft") == 0 || std::strcmp(e->key, "ControlRight") == 0)
+    {
+        s_keyState.insert(GLFW_KEY_LEFT_CONTROL);
+        return EM_TRUE;
+    }
+    if (std::strcmp(e->key, "Alt") == 0 || std::strcmp(e->key, "AltLeft") == 0 || std::strcmp(e->key, "AltRight") == 0)
+    {
+        s_keyState.insert(GLFW_KEY_LEFT_ALT);
+        return EM_TRUE;
+    }
+    if (std::strcmp(e->key, "Backspace") == 0)
+    {
+        s_keyState.insert(GLFW_KEY_BACKSPACE);
         return EM_TRUE;
     }
     return EM_FALSE;
@@ -155,6 +189,21 @@ static EM_BOOL em_keyup_callback(int eventType, const EmscriptenKeyboardEvent *e
         s_keyState.erase(GLFW_KEY_DOWN);
         return EM_TRUE;
     }
+    if (std::strcmp(e->key, "Control") == 0 || std::strcmp(e->key, "ControlLeft") == 0 || std::strcmp(e->key, "ControlRight") == 0)
+    {
+        s_keyState.erase(GLFW_KEY_LEFT_CONTROL);
+        return EM_TRUE;
+    }
+    if (std::strcmp(e->key, "Alt") == 0 || std::strcmp(e->key, "AltLeft") == 0 || std::strcmp(e->key, "AltRight") == 0)
+    {
+        s_keyState.erase(GLFW_KEY_LEFT_ALT);
+        return EM_TRUE;
+    }
+    if (std::strcmp(e->key, "Backspace") == 0)
+    {
+        s_keyState.erase(GLFW_KEY_BACKSPACE);
+        return EM_TRUE;
+    }
     return EM_FALSE;
 }
 #endif
@@ -205,6 +254,7 @@ Window::Window(int width, int height, const char *title)
         // Register keyboard callbacks to track pressed keys for `isKeyPressed()`
         emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, em_keydown_callback);
         emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, em_keyup_callback);
+        emscripten_set_mousedown_callback("#canvas", NULL, EM_TRUE, em_on_mouse_down);
         // Attach mousemove handler directly to our canvas element so pointer-lock deltas arrive
         emscripten_set_mousemove_callback("#canvas", NULL, EM_TRUE, em_mousemove_callback);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);

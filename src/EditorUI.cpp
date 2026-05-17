@@ -149,7 +149,7 @@ void EditorUI::drawDockspace()
     ImGui::End();
 }
 
-void EditorUI::drawGameView(Scene * /*scene*/)
+void EditorUI::drawGameView(Scene *scene)
 {
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar;
     ImGui::SetNextWindowSize(ImVec2(900.0f, 600.0f), ImGuiCond_FirstUseEver);
@@ -167,7 +167,7 @@ void EditorUI::drawGameView(Scene * /*scene*/)
     gameViewportH = contentSize.y;
     hasGameViewport = (gameViewportW > 1.0f && gameViewportH > 1.0f);
 
-    gameViewInput = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && hasGameViewport;
+    gameViewInput = ImGui::IsWindowHovered(ImGuiFocusedFlags_RootAndChildWindows) && hasGameViewport;
 
     if (gameTextureId && hasGameViewport)
     {
@@ -183,13 +183,8 @@ void EditorUI::drawGameView(Scene * /*scene*/)
     {
         if (!testingMode)
         {
-#if defined(__EMSCRIPTEN__)
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
-            {
-#else
             if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
             {
-#endif
                 if (windowRef)
                     windowRef->setCursorDisabled(true);
             }
