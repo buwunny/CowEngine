@@ -167,7 +167,7 @@ void EditorUI::drawGameView(Scene *scene)
     gameViewportH = contentSize.y;
     hasGameViewport = (gameViewportW > 1.0f && gameViewportH > 1.0f);
 
-    gameViewInput = ImGui::IsWindowHovered(ImGuiFocusedFlags_RootAndChildWindows) && hasGameViewport;
+    gameViewInput = (ImGui::IsWindowHovered(ImGuiFocusedFlags_RootAndChildWindows) || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) && hasGameViewport;
 
     if (gameTextureId && hasGameViewport)
     {

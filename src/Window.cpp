@@ -71,6 +71,22 @@ static EM_BOOL em_on_mouse_down(int eventType, const EmscriptenMouseEvent *e, vo
     return EM_FALSE; // Pass other buttons (like left-click) to GLFW's native handler
 }
 
+static EM_BOOL em_on_mouse_up(int eventType, const EmscriptenMouseEvent *e, void *userData)
+{
+    if (!e)
+        return EM_FALSE;
+
+    if (e->button == 2)
+    {
+        // Manually inject the right-click release event into ImGui's IO backend
+        ImGuiIO &io = ImGui::GetIO();
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+
+        return EM_TRUE; // Consume the event so it doesn't bubble up
+    }
+    return EM_FALSE; // Pass other buttons (like left-click) to GLFW's native handler
+}
+
 static EM_BOOL em_keydown_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData)
 {
     if (!e)
@@ -255,6 +271,7 @@ Window::Window(int width, int height, const char *title)
         emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, em_keydown_callback);
         emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, em_keyup_callback);
         emscripten_set_mousedown_callback("#canvas", NULL, EM_TRUE, em_on_mouse_down);
+        emscripten_set_mouseup_callback("#canvas", NULL, EM_TRUE, em_on_mouse_up);
         // Attach mousemove handler directly to our canvas element so pointer-lock deltas arrive
         emscripten_set_mousemove_callback("#canvas", NULL, EM_TRUE, em_mousemove_callback);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
