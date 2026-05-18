@@ -16,10 +16,6 @@ public:
 
     const char *getTypeName() const override { return "Plane"; }
 
-    void render(Window &window, Shader &shader) override;
-    void renderTransparent(Window &window, Shader &shader) override;
-    void renderFill(Window &window, Shader &shader) override;
-
     float getLength() const { return length; }
     float getWidth() const { return width; }
 };

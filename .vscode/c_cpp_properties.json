@@ -3,7 +3,6 @@
         {
             "name": "Linux",
             "includePath": [
-                // "${workspaceFolder}/**",
                 "${workspaceFolder}/include",
                 "${workspaceFolder}/include/**",
                 "${workspaceFolder}/vcpkg_installed/x64-linux/include",
@@ -12,9 +11,11 @@
                 "${workspaceFolder}/build-web/_deps/imgui_repo-src/backends",
                 "${workspaceFolder}/build-native/_deps/imgui_repo-src",
                 "${workspaceFolder}/build-native/_deps/imgui_repo-src/backends",
-                "/usr/include",
-                "/usr/local/include",
-                "/home/bunny/emsdk/upstream/emscripten/cache/sysroot/include/"
+                "/usr/include/",
+                "/usr/local/include/",
+                "/usr/include/GL",
+                "/usr/include/bullet",
+                "/usr/include/glm"
             ],
             "defines": [
                 "IMGUI_ENABLE_DOCKING",

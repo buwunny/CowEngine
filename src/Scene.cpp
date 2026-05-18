@@ -439,8 +439,53 @@ Object *Scene::raycast(const glm::vec3 &origin, const glm::vec3 &direction, floa
         // Convert from btCollisionObject to our Object class using the user pointer
         if (colObj && colObj->getUserPointer())
         {
-            return static_cast<Object *>(colObj->getUserPointer());
+            hoveredObject = static_cast<Object *>(colObj->getUserPointer());
+            return hoveredObject;
         }
     }
-    return nullptr;
+    hoveredObject = nullptr;
+    return hoveredObject;
+}
+
+void Scene::render(Window &window, Shader &shader)
+{
+    for (auto &obj : objects)
+    {
+        if (obj.get() == selectedObject)
+        {
+            obj->render(window, shader);
+            double originalLineWidth = obj->getLineWidth();
+            obj->setLineWidth(originalLineWidth * 5.0); // increase line width for hovered outline
+            obj->renderTransparent(window, shader);     // render wireframe outline
+            obj->setLineWidth(originalLineWidth);       // reset line width
+        }
+        else if (obj.get() == hoveredObject)
+        {
+            obj->render(window, shader);
+            double originalLineWidth = obj->getLineWidth();
+            obj->setLineWidth(originalLineWidth * 2.0); // increase line width for hovered outline
+            obj->renderTransparent(window, shader);     // render wireframe outline
+            obj->setLineWidth(originalLineWidth);       // reset line width
+        }
+        else
+        {
+            obj->render(window, shader);
+        }
+    }
+}
+
+void Scene::renderTransparent(Window &window, Shader &shader)
+{
+    for (auto &obj : objects)
+    {
+        obj->renderTransparent(window, shader);
+    }
+}
+
+void Scene::renderFill(Window &window, Shader &shader)
+{
+    for (auto &obj : objects)
+    {
+        obj->renderFill(window, shader);
+    }
 }

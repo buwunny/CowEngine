@@ -24,38 +24,3 @@ Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass) : size(size)
     rigidBody->setUserPointer(this);
     this->color = color;
 }
-
-void Cube::render(Window &window, Shader &shader)
-{
-    shader.setModelMatrix(model);
-    // Draw filled geometry first with polygon offset to avoid z-fighting
-    glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(1.0f, 1.0f);
-    window.setPolygonMode(GL_FILL);
-    shader.setFragmentColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-    mesh->render();
-    glDisable(GL_POLYGON_OFFSET_FILL);
-
-    // Draw wireframe overlay
-    window.setPolygonMode(GL_LINE);
-    window.setLineWidth(3.0f);
-    shader.setFragmentColor(color);
-    mesh->renderWireframe();
-}
-
-void Cube::renderTransparent(Window &window, Shader &shader)
-{
-    shader.setModelMatrix(model);
-    window.setPolygonMode(GL_LINE);
-    window.setLineWidth(3.0f);
-    shader.setFragmentColor(color);
-    mesh->renderWireframe();
-}
-
-void Cube::renderFill(Window &window, Shader &shader)
-{
-    shader.setModelMatrix(model);
-    window.setPolygonMode(GL_FILL);
-    shader.setFragmentColor(color);
-    mesh->render();
-}

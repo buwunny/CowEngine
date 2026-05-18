@@ -253,7 +253,7 @@ void Application::checkSelection(float delta)
 {
     editorInput->processInput(window, delta);
     // Send raycast to scene to select objects in the editor when hovering in the game view and left-clicking
-    if (editorUI && editorUI->isGameViewInputEnabled())
+    if (editorUI && editorUI->isGameViewInputEnabled() && !window->isCursorDisabled())
     {
         ImVec2 mousePos = ImGui::GetMousePos();
 
@@ -289,7 +289,17 @@ void Application::checkSelection(float delta)
                 {
                     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                     {
-                        editorUI->setSelection(hitObject);
+                        if (hitObject == scene->getSelectedObject())
+                        {
+                            // Deselect if clicking the already selected object
+                            scene->setSelectedObject(nullptr);
+                            editorUI->setSelection(nullptr);
+                        }
+                        else
+                        {
+                            scene->setSelectedObject(hitObject);
+                            editorUI->setSelection(hitObject);
+                        }
                     }
                     std::string typeName(hitObject->getTypeName());
                 }

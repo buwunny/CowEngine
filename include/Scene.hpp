@@ -43,6 +43,8 @@ public:
             return nullptr;
         return objects[index].get();
     }
+    void setSelectedObject(Object *obj) { selectedObject = obj; }
+    Object *getSelectedObject() const { return selectedObject; }
     const std::string &getScenePath() const { return scenePath; }
 
     // Global accessor for the active scene (set when a scene registers a player)
@@ -63,23 +65,11 @@ public:
             player->update();
     }
 
-    void render(Window &window, Shader &shader)
-    {
-        for (auto &obj : objects)
-            obj->render(window, shader);
-    }
+    void render(Window &window, Shader &shader);    
 
-    void renderTransparent(Window &window, Shader &shader)
-    {
-        for (auto &obj : objects)
-            obj->renderTransparent(window, shader);
-    }
+    void renderTransparent(Window &window, Shader &shader);
 
-    void renderFill(Window &window, Shader &shader)
-    {
-        for (auto &obj : objects)
-            obj->renderFill(window, shader);
-    }
+    void renderFill(Window &window, Shader &shader);
 
 private:
     std::vector<std::unique_ptr<Object>> objects;
@@ -90,6 +80,8 @@ private:
     std::chrono::steady_clock::time_point lastAutoReloadTime = std::chrono::steady_clock::time_point::min();
     std::chrono::milliseconds reloadDebounce{500};
     static Scene *s_current;
+    Object *selectedObject = nullptr;
+    Object *hoveredObject = nullptr;
 };
 
 #endif // SCENE_HPP

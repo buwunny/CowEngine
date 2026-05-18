@@ -23,38 +23,3 @@ Plane::Plane(float length, float width, glm::mat4 model, glm::vec4 color, float 
     rigidBody->setUserPointer(this);
     this->color = color;
 }
-
-void Plane::render(Window &window, Shader &shader)
-{
-    shader.setModelMatrix(model);
-    // Draw filled geometry with the plane's color
-    glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(1.0f, 1.0f);
-    window.setPolygonMode(GL_FILL);
-    shader.setFragmentColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-    mesh->render();
-    glDisable(GL_POLYGON_OFFSET_FILL);
-
-    // Wireframe overlay
-    window.setPolygonMode(GL_LINE);
-    window.setLineWidth(3.0f);
-    shader.setFragmentColor(color);
-    mesh->renderWireframe();
-}
-
-void Plane::renderTransparent(Window &window, Shader &shader)
-{
-    shader.setModelMatrix(model);
-    window.setPolygonMode(GL_LINE);
-    window.setLineWidth(3.0f);
-    shader.setFragmentColor(color);
-    mesh->renderWireframe();
-}
-
-void Plane::renderFill(Window &window, Shader &shader)
-{
-    shader.setModelMatrix(model);
-    window.setPolygonMode(GL_FILL);
-    shader.setFragmentColor(color);
-    mesh->render();
-}

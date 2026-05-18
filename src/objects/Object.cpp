@@ -49,3 +49,38 @@ void Object::setTransform(const glm::vec3 &pos, const glm::vec3 &rotDeg, const g
         rigidBody->activate(true);
     }
 }
+
+void Object::render(Window &window, Shader &shader)
+{
+    shader.setModelMatrix(model);
+    // Draw filled geometry with the plane's color
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(1.0f, 1.0f);
+    window.setPolygonMode(GL_FILL);
+    shader.setFragmentColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    mesh->render();
+    glDisable(GL_POLYGON_OFFSET_FILL);
+
+    // Wireframe overlay
+    window.setPolygonMode(GL_LINE);
+    window.setLineWidth(lineWidth);
+    shader.setFragmentColor(color);
+    mesh->renderWireframe();
+}
+
+void Object::renderTransparent(Window &window, Shader &shader)
+{
+    shader.setModelMatrix(model);
+    window.setPolygonMode(GL_LINE);
+    window.setLineWidth(lineWidth);
+    shader.setFragmentColor(color);
+    mesh->renderWireframe();
+}
+
+void Object::renderFill(Window &window, Shader &shader)
+{
+    shader.setModelMatrix(model);
+    window.setPolygonMode(GL_FILL);
+    shader.setFragmentColor(color);
+    mesh->render();
+}

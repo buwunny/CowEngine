@@ -23,9 +23,9 @@ public:
     Object();
     virtual ~Object() {}
     virtual const char *getTypeName() const = 0;
-    virtual void render(Window &window, Shader &shader) = 0;
-    virtual void renderTransparent(Window &window, Shader &shader) = 0;
-    virtual void renderFill(Window &window, Shader &shader) = 0;
+    virtual void render(Window &window, Shader &shader);
+    virtual void renderTransparent(Window &window, Shader &shader);
+    virtual void renderFill(Window &window, Shader &shader);
     void update()
     {
         btTransform trans;
@@ -123,6 +123,14 @@ public:
             rigidBody->setMassProps(mass, inertia);
         }
     }
+    void setLineWidth(double width)
+    {
+        this->lineWidth = width;
+    }
+    double getLineWidth() const
+    {
+        return this->lineWidth;
+    }
 
 protected:
     std::unique_ptr<btRigidBody> rigidBody;
@@ -133,6 +141,7 @@ protected:
     glm::dvec3 rotation = glm::dvec3(0.0f);
     glm::dvec3 scale = glm::dvec3(1.0f);
     double mass = 0.0;
+    double lineWidth = 1.0;
     glm::vec4 color;
     glm::mat4 model;
     glm::mat4 modelNoScale;

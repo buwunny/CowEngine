@@ -12,10 +12,6 @@ public:
     ~StaticObject() = default;
 
     const char *getTypeName() const override { return "StaticObject"; }
-
-    void render(Window &window, Shader &shader) override;
-    void renderTransparent(Window &window, Shader &shader) override;
-    void renderFill(Window &window, Shader &shader) override;
 };
 
 #endif // STATICOBJECT_HPP
