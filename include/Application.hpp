@@ -27,6 +27,8 @@ public:
     void runDesktop();
 
 private:
+    void checkSelection(float delta);
+
     PhysicsWorld *physics = nullptr;
     Window *window = nullptr;
     Camera *camera = nullptr;

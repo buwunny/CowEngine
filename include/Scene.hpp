@@ -31,6 +31,8 @@ public:
     void checkReload();
     void forceReload();
 
+    Object *raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance);
+
     void addPlayer(std::unique_ptr<Player> player, Window *window, PhysicsWorld &physics);
     Player *getPlayer() { return player.get(); }
     void addObject(std::unique_ptr<Object> obj);

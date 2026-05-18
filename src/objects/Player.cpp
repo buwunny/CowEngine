@@ -32,6 +32,7 @@ Player::Player(Camera *camera, glm::mat4 model)
     rigidBody->setCcdSweptSphereRadius(0.4);
 
     rigidBody->setFriction(1.0f);
+    rigidBody->setUserPointer(this);
 }
 
 bool Player::isOnGround(PhysicsWorld *physics)

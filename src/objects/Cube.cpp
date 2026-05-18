@@ -21,7 +21,7 @@ Cube::Cube(int size, glm::mat4 model, glm::vec4 color, float mass) : size(size)
     rigidBody.reset(new btRigidBody(rbInfo));
     // Ensure body is active and print debug info for web builds
     rigidBody->setActivationState(ACTIVE_TAG);
-
+    rigidBody->setUserPointer(this);
     this->color = color;
 }
 

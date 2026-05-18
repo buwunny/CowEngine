@@ -421,3 +421,26 @@ void Scene::addObject(std::unique_ptr<Object> obj)
         physicsWorld->addRigidBody(obj->getRigidBody());
     objects.push_back(std::move(obj));
 }
+
+Object *Scene::raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance)
+{
+    if (!Scene::s_current || !Scene::s_current->physicsWorld)
+        return nullptr;
+
+    btVector3 from(origin.x, origin.y, origin.z);
+    btVector3 to = from + btVector3(direction.x, direction.y, direction.z) * maxDistance;
+
+    btCollisionWorld::ClosestRayResultCallback rayCallback(from, to);
+    Scene::s_current->physicsWorld->rayTest(from, to, rayCallback);
+
+    if (rayCallback.hasHit())
+    {
+        const btCollisionObject *colObj = rayCallback.m_collisionObject;
+        // Convert from btCollisionObject to our Object class using the user pointer
+        if (colObj && colObj->getUserPointer())
+        {
+            return static_cast<Object *>(colObj->getUserPointer());
+        }
+    }
+    return nullptr;
+}

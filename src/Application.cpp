@@ -123,8 +123,7 @@ void Application::tick()
             ->processInput(window, delta, physics);
     if (!testingMode && editorInput && allowGameInput)
     {
-
-        editorInput->processInput(window, delta);
+        checkSelection(delta);
         // process mouse when in editor mode and game view is focused, only if cursor is disabled (e.g. on web)
         if (editorUI && editorUI->isGameViewInputEnabled() && window->isCursorDisabled())
         {
@@ -247,6 +246,55 @@ void Application::runDesktop()
         // Note: fps count/timer already handled in tick; compute instantaneous fps occasionally
         // (Kept minimal to avoid excessive allocations)
         // Sleep/yield not added; rely on vsync or GL swap
+    }
+}
+
+void Application::checkSelection(float delta)
+{
+    editorInput->processInput(window, delta);
+    // Send raycast to scene to select objects in the editor when hovering in the game view and left-clicking
+    if (editorUI && editorUI->isGameViewInputEnabled())
+    {
+        ImVec2 mousePos = ImGui::GetMousePos();
+
+        float gameViewportX, gameViewportY, gameViewportW, gameViewportH, scaleX, scaleY;
+        if (editorUI->getGameViewport(gameViewportX, gameViewportY, gameViewportW, gameViewportH, scaleX, scaleY))
+        {
+            float mouseX = mousePos.x - gameViewportX;
+            float mouseY = mousePos.y - gameViewportY;
+            // Scale mouse correctly
+            float scaledW = gameViewportW * scaleX;
+            float scaledH = gameViewportH * scaleY;
+            float scaledMouseX = mouseX * scaleX;
+            float scaledMouseY = mouseY * scaleY;
+            if (mouseX >= 0 && mouseY >= 0 && mouseX <= gameViewportW && mouseY <= gameViewportH)
+            {
+                // Convert mouse coordinates to normalized device coordinates (-1 to 1)
+                float ndcX = (mouseX / gameViewportW) * 2.0f - 1.0f;
+                float ndcY = 1.0f - (mouseY / gameViewportH) * 2.0f; // Invert Y for NDC
+
+                // Get camera matrices
+                glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
+                glm::mat4 projection = glm::perspective(glm::radians(45.0f), scaledW / scaledH, 0.1f, 1000.0f);
+                // Unproject screen coordinates to world ray
+                glm::vec4 rayClip(ndcX, ndcY, -1.0f, 1.0f);
+                glm::vec4 rayEye = glm::inverse(projection) * rayClip;
+                rayEye.z = -1.0f; // Forward direction in eye space
+                rayEye.w = 0.0f;  // Direction vector
+                glm::vec3 rayWorld = glm::normalize(glm::vec3(glm::inverse(view) * rayEye));
+
+                // Raycast into the scene
+                Object *hitObject = scene->raycast(camera->getPosition(), rayWorld, 1000.0f);
+                if (hitObject)
+                {
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    {
+                        editorUI->setSelection(hitObject);
+                    }
+                    std::string typeName(hitObject->getTypeName());
+                }
+            }
+        }
     }
 }
 

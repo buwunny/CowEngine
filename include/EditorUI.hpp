@@ -21,6 +21,7 @@ public:
     bool isTestingMode() const { return testingMode; }
     bool isGameViewInputEnabled() const { return gameViewInput; }
     void setGameTexture(ImTextureID textureId, float width, float height);
+    void setSelection(Object *object);
 
     void setVisible(bool visible) { showUI = visible; }
     bool isVisible() const { return showUI; }
@@ -52,7 +53,6 @@ private:
     void drawConsole(Scene *scene);
     void drawRuntime(Scene *scene);
 
-    void setSelection(Object *object);
     void refreshSelectionCache();
     void applySelectionTransform();
     void applySelectionColor();

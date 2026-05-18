@@ -20,7 +20,7 @@ Plane::Plane(float length, float width, glm::mat4 model, glm::vec4 color, float 
     rigidBody.reset(new btRigidBody(rbInfo));
 
     rigidBody->setFriction(1.0f);
-
+    rigidBody->setUserPointer(this);
     this->color = color;
 }
 

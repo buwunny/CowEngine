@@ -62,10 +62,8 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
 
         this->color = color;
 
-        // Activate and log for debugging on web builds
         rigidBody->setActivationState(ACTIVE_TAG);
-        std::printf("StaticObject: created rigidBody=%p mass=%.3f objs_vertices=%zu inds=%zu active=%d\n", (void *)rigidBody.get(), (double)mass, vertex_count, index_count, rigidBody->getActivationState());
-
+        rigidBody->setUserPointer(this);
         return;
     }
 
@@ -145,6 +143,7 @@ StaticObject::StaticObject(std::shared_ptr<Mesh> sharedMesh, const float *verts,
         rigidBody.reset(new btRigidBody(rbInfo));
 
         this->color = color;
+        rigidBody->setUserPointer(this);
 
         return;
     }
