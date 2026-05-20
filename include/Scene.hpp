@@ -35,6 +35,15 @@ public:
 
     void addPlayer(std::unique_ptr<Player> player, Window *window, PhysicsWorld &physics);
     Player *getPlayer() { return player.get(); }
+    void removePlayer()
+    {
+        if (player)
+        {
+            if (player->getRigidBody())
+                this->physicsWorld->removeRigidBody(player->getRigidBody());
+            player.reset();
+        }
+    }
     void addObject(std::unique_ptr<Object> obj);
     size_t getObjectCount() const { return objects.size(); }
     Object *getObjectByIndex(size_t index)
@@ -42,6 +51,24 @@ public:
         if (index >= objects.size())
             return nullptr;
         return objects[index].get();
+    }
+    void deleteObject(Object *obj)
+    {
+        if (!obj)
+            return;
+        // Remove from physics world if applicable
+        if (physicsWorld && obj->getRigidBody())
+            physicsWorld->removeRigidBody(obj->getRigidBody());
+        // Remove from objects vector
+        objects.erase(std::remove_if(objects.begin(), objects.end(),
+                                     [obj](const std::unique_ptr<Object> &o)
+                                     { return o.get() == obj; }),
+                      objects.end());
+        // Clear selection if this was the selected object
+        if (selectedObject == obj)
+            selectedObject = nullptr;
+        if (hoveredObject == obj)
+            hoveredObject = nullptr;
     }
     void setSelectedObject(Object *obj) { selectedObject = obj; }
     Object *getSelectedObject() const { return selectedObject; }
@@ -65,7 +92,7 @@ public:
             player->update();
     }
 
-    void render(Window &window, Shader &shader);    
+    void render(Window &window, Shader &shader);
 
     void renderTransparent(Window &window, Shader &shader);
 

@@ -60,7 +60,7 @@ private:
     void execCommand(const std::string &commandLine, Scene *scene);
     static int consoleTextEditCallback(ImGuiInputTextCallbackData *data);
 
-    void spawnCow(Scene *scene);
+    void addObjectToScene(Scene *scene, const std::string &type);
 
     bool showUI = true;
     bool showHierarchy = true;

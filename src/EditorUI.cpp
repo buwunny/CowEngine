@@ -358,6 +358,21 @@ void EditorUI::drawInspector(Scene *scene)
         ImGui::Text("Velocity: %.2f %.2f %.2f", v.getX(), v.getY(), v.getZ());
     }
 
+    ImGui::Separator();
+    if (ImGui::Button("Delete"))
+    {
+        if (selection.object == scene->getPlayer())
+        {
+            scene->removePlayer();
+        }
+        else
+        {
+            // Find and remove the object from the scene
+            scene->deleteObject(selection.object);
+        }
+        setSelection(nullptr);
+    }
+
     ImGui::End();
 }
 
@@ -455,7 +470,11 @@ void EditorUI::drawRuntime(Scene *scene)
     ImGui::Separator();
     ImGui::TextUnformatted("Tools");
     if (ImGui::Button("Spawn Cow"))
-        spawnCow(scene);
+        addObjectToScene(scene, "cow");
+    if (ImGui::Button("Spawn Cube"))
+        addObjectToScene(scene, "cube");
+    if (ImGui::Button("Spawn Plane"))
+        addObjectToScene(scene, "plane");
 
     ImGui::Separator();
     ImGui::TextUnformatted("Input");
@@ -556,7 +575,7 @@ void EditorUI::execCommand(const std::string &commandLine, Scene *scene)
 
     if (commandLine == "spawn_cow")
     {
-        spawnCow(scene);
+        addObjectToScene(scene, "cow");
         return;
     }
 
@@ -637,45 +656,26 @@ int EditorUI::consoleTextEditCallback(ImGuiInputTextCallbackData *data)
     return 0;
 }
 
-void EditorUI::spawnCow(Scene *scene)
+void EditorUI::addObjectToScene(Scene *scene, const std::string &type)
 {
     if (!scene)
         return;
 
-    auto &assetManager = AssetManager::instance();
-    auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
-    if (!cowMesh)
-        cowMesh = assetManager.loadStaticMeshFromArrays("cow", cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3);
-
-    glm::vec3 pos(0.0f, 10.0f, 0.0f);
-    if (scene->getPlayer())
+    if (type == "cube")
     {
-        Camera *cam = scene->getPlayer()->getCamera();
-        if (cam)
+        scene->addObject(std::make_unique<Cube>(1, glm::mat4(1.0f), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f));
+    }
+    else if (type == "plane")
+    {
+        scene->addObject(std::make_unique<Plane>(100, 100, glm::mat4(1.0f), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 0.0f));
+    }
+    else if (type == "cow")
+    {
+        auto &assetManager = AssetManager::instance();
+        auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
+        if (cowMesh)
         {
-            pos = cam->getPosition() + cam->getFront() * 5.0f;
-            pos.y += 2.0f;
+            scene->addObject(std::make_unique<StaticObject>(cowMesh, cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 5.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f));
         }
-    }
-
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-    float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-    float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-    float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-    glm::vec4 color = glm::vec4(r, g, b, 1.0f);
-    float mass = 1.0f;
-
-    if (cowMesh)
-    {
-        const auto &verts = cowMesh->getVertices();
-        const auto &inds = cowMesh->getIndices();
-        int stride = cowMesh->getFloatsPerVertex();
-        auto obj = std::make_unique<StaticObject>(cowMesh, verts.data(), verts.size() / stride, inds.data(), inds.size(), stride, model, color, mass);
-        scene->addObject(std::move(obj));
-        addLog("Spawned cow.", ImVec4(0.6f, 0.9f, 0.6f, 1.0f));
-    }
-    else
-    {
-        addLog("Failed to load cow mesh.", ImVec4(0.9f, 0.5f, 0.5f, 1.0f));
     }
 }
