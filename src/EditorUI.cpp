@@ -248,6 +248,8 @@ void EditorUI::drawSceneHierarchy(Scene *scene)
     ImGui::Text("Scene: %s", path.empty() ? "<unsaved>" : path.c_str());
     if (ImGui::Button("Reload"))
     {
+        setSelection(nullptr);
+        scene->setSelectedObject(nullptr);
         scene->forceReload();
         addLog("Scene reload requested.", ImVec4(0.9f, 0.8f, 0.4f, 1.0f));
     }
@@ -568,6 +570,8 @@ void EditorUI::execCommand(const std::string &commandLine, Scene *scene)
 
     if (commandLine == "reload")
     {
+        setSelection(nullptr);
+        scene->setSelectedObject(nullptr);
         scene->forceReload();
         addLog("Scene reload requested.");
         return;
@@ -663,11 +667,11 @@ void EditorUI::addObjectToScene(Scene *scene, const std::string &type)
 
     if (type == "cube")
     {
-        scene->addObject(std::make_unique<Cube>(1, glm::mat4(1.0f), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f));
+        scene->addObject(std::make_unique<Cube>(1, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f));
     }
     else if (type == "plane")
     {
-        scene->addObject(std::make_unique<Plane>(100, 100, glm::mat4(1.0f), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 0.0f));
+        scene->addObject(std::make_unique<Plane>(100, 100, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 0.0f));
     }
     else if (type == "cow")
     {
@@ -675,7 +679,7 @@ void EditorUI::addObjectToScene(Scene *scene, const std::string &type)
         auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
         if (cowMesh)
         {
-            scene->addObject(std::make_unique<StaticObject>(cowMesh, cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 5.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f));
+            scene->addObject(std::make_unique<StaticObject>(cowMesh, cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f));
         }
     }
 }

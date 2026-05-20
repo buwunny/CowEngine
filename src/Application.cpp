@@ -84,6 +84,8 @@ void Application::tick()
     bool r = window->isKeyPressed(GLFW_KEY_R);
     if (r && !lastRPressed)
     {
+        editorUI->setSelection(nullptr);
+        scene->setSelectedObject(nullptr);
         scene->forceReload();
     }
     lastRPressed = r;
@@ -108,7 +110,11 @@ void Application::tick()
     if (testingMode != lastTestingMode)
     {
         if (!testingMode)
+        {
+            editorUI->setSelection(nullptr);
+            scene->setSelectedObject(nullptr);
             scene->forceReload();
+        }
 
         lastTestingMode = testingMode;
     }
