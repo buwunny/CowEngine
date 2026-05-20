@@ -131,6 +131,22 @@ public:
     {
         return this->lineWidth;
     }
+    void setSelected(bool selected)
+    {
+        this->selected = selected;
+    }
+    bool isSelected() const
+    {
+        return this->selected;
+    }
+    void setHovered(bool hovered)
+    {
+        this->hovered = hovered;
+    }
+    bool isHovered() const
+    {
+        return this->hovered;
+    }
 
 protected:
     std::unique_ptr<btRigidBody> rigidBody;
@@ -149,7 +165,9 @@ protected:
     bool wireframe;
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
-
+    bool selected = false;
+    ;
+    bool hovered = false;
     int id = 0;
     std::string name;
 };

@@ -57,7 +57,20 @@ void Object::render(Window &window, Shader &shader)
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(1.0f, 1.0f);
     window.setPolygonMode(GL_FILL);
-    shader.setFragmentColor(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+
+    // default to black
+    glm::vec4 fillColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // if selected dark pink, almost black
+    if (selected)
+    {
+        fillColor = glm::vec4(0.10f, 0.10f, 0.14f, 0.95f);
+    }
+    if (hovered)
+    {
+        fillColor = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f);
+    }
+
+    shader.setFragmentColor(fillColor);
     mesh->render();
     glDisable(GL_POLYGON_OFFSET_FILL);
 

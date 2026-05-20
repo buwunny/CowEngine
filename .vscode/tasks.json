@@ -44,6 +44,51 @@
             }
         },
         {
+            "label": "cmake: configure native",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "mkdir -p build-native && cd build-native && \nif [ -d ../vcpkg_installed/x64-linux/share ]; then \n  extra=\"-DCMAKE_PREFIX_PATH=../vcpkg_installed/x64-linux/share\"; \nelse \n  extra=\"\"; \nfi && \nif [ -f ${HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake ]; then \n  cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake $extra ..; \nelse \n  cmake -DCMAKE_BUILD_TYPE=Release $extra ..; \nfi"
+            ],
+            "group": "build",
+            "presentation": {
+                "reveal": "always"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "cmake: build native",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-lc",
+                "cd build-native && cmake --build . -j"
+            ],
+            "group": "build",
+            "presentation": {
+                "reveal": "always"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "build-native",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "cmake: configure native",
+                "cmake: build native"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "serve build-web",
             "type": "shell",
             "command": "bash",

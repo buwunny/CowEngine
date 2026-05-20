@@ -453,24 +453,20 @@ void Scene::render(Window &window, Shader &shader)
     {
         if (obj.get() == selectedObject)
         {
-            obj->render(window, shader);
-            double originalLineWidth = obj->getLineWidth();
-            obj->setLineWidth(originalLineWidth * 5.0); // increase line width for hovered outline
-            obj->renderTransparent(window, shader);     // render wireframe outline
-            obj->setLineWidth(originalLineWidth);       // reset line width
+            obj->setSelected(true);
+            obj->setHovered(false);
         }
         else if (obj.get() == hoveredObject)
         {
-            obj->render(window, shader);
-            double originalLineWidth = obj->getLineWidth();
-            obj->setLineWidth(originalLineWidth * 2.0); // increase line width for hovered outline
-            obj->renderTransparent(window, shader);     // render wireframe outline
-            obj->setLineWidth(originalLineWidth);       // reset line width
+            obj->setSelected(false);
+            obj->setHovered(true);
         }
         else
         {
-            obj->render(window, shader);
+            obj->setSelected(false);
+            obj->setHovered(false);
         }
+        obj->render(window, shader);
     }
 }
 
