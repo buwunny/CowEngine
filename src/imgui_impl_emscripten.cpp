@@ -101,6 +101,18 @@ static ImGuiKey mapKeyStringToImGuiKey(const char *key)
         return ImGuiKey_Escape;
     if (std::strcmp(key, " ") == 0 || std::strcmp(key, "Space") == 0)
         return ImGuiKey_Space;
+    if (std::strcmp(key, "Shift") == 0 || std::strcmp(key, "ShiftLeft") == 0)
+        return ImGuiKey_LeftShift;
+    if (std::strcmp(key, "ShiftRight") == 0)
+        return ImGuiKey_RightShift;
+    if (std::strcmp(key, "Control") == 0 || std::strcmp(key, "ControlLeft") == 0)
+        return ImGuiKey_LeftCtrl;
+    if (std::strcmp(key, "ControlRight") == 0)
+        return ImGuiKey_RightCtrl;
+    if (std::strcmp(key, "Alt") == 0 || std::strcmp(key, "AltLeft") == 0)
+        return ImGuiKey_LeftAlt;
+    if (std::strcmp(key, "AltRight") == 0)
+        return ImGuiKey_RightAlt;
     // Single character keys (letters)
     if (key[1] == '\0')
     {
@@ -119,13 +131,21 @@ static EM_BOOL keydown_callback(int eventType, const EmscriptenKeyboardEvent *e,
     ImGuiIO &io = ImGui::GetIO();
     if (!e)
         return EM_FALSE;
-    if (e->key[0] != '\0' && !(e->ctrlKey || e->metaKey))
+    io.AddKeyEvent(ImGuiMod_Shift, e->shiftKey);
+    io.AddKeyEvent(ImGuiMod_Ctrl, e->ctrlKey);
+    io.AddKeyEvent(ImGuiMod_Alt, e->altKey);
+    io.AddKeyEvent(ImGuiMod_Super, e->metaKey);
+    ImGuiKey imguiKey = mapKeyStringToImGuiKey(e->key);
+    if (imguiKey != ImGuiKey_None)
+        io.AddKeyEvent(imguiKey, true);
+
+    // Add character input for printable keys. Named special keys (Backspace, Enter, ArrowLeft, etc.)
+    // are all ASCII strings starting with an uppercase letter and longer than one character.
+    // Actual printable characters are either a single ASCII char or a multi-byte UTF-8 sequence
+    // whose first byte has the high bit set (>= 0x80), so we can distinguish them.
+    bool isNamedSpecialKey = std::isupper((unsigned char)e->key[0]) && e->key[1] != '\0';
+    if (!isNamedSpecialKey && e->key[0] != '\0' && !(e->ctrlKey || e->metaKey))
         io.AddInputCharactersUTF8(e->key);
-    // Fallback to legacy API: update modifier flags on io
-    io.KeyShift = e->shiftKey;
-    io.KeyCtrl = e->ctrlKey;
-    io.KeyAlt = e->altKey;
-    io.KeySuper = e->metaKey;
     return EM_TRUE;
 }
 
@@ -134,10 +154,13 @@ static EM_BOOL keyup_callback(int eventType, const EmscriptenKeyboardEvent *e, v
     ImGuiIO &io = ImGui::GetIO();
     if (!e)
         return EM_FALSE;
-    io.KeyShift = e->shiftKey;
-    io.KeyCtrl = e->ctrlKey;
-    io.KeyAlt = e->altKey;
-    io.KeySuper = e->metaKey;
+    io.AddKeyEvent(ImGuiMod_Shift, e->shiftKey);
+    io.AddKeyEvent(ImGuiMod_Ctrl, e->ctrlKey);
+    io.AddKeyEvent(ImGuiMod_Alt, e->altKey);
+    io.AddKeyEvent(ImGuiMod_Super, e->metaKey);
+    ImGuiKey imguiKey = mapKeyStringToImGuiKey(e->key);
+    if (imguiKey != ImGuiKey_None)
+        io.AddKeyEvent(imguiKey, false);
     return EM_TRUE;
 }
 

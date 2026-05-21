@@ -5,6 +5,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <filesystem>
+#include <memory>
 
 AssetManager &AssetManager::instance()
 {

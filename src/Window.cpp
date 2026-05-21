@@ -2,8 +2,7 @@
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/html5.h>
 #include <emscripten/emscripten.h>
-#include <imgui_internal.h>
-#include <unordered_set>
+#include <imgui.h>
 #include <cstring>
 #include <cctype>
 
@@ -29,10 +28,33 @@ EM_JS(int, js_is_canvas_pointer_locked, (), {
     }
 });
 
-static std::unordered_set<int> s_keyState;
 #include "objects/Player.hpp"
 
 static Player *s_player_for_mouse = nullptr;
+
+static ImGuiKey glfwKeyToImGuiKey(int key)
+{
+    if (key >= GLFW_KEY_A && key <= GLFW_KEY_Z)
+        return static_cast<ImGuiKey>(ImGuiKey_A + (key - GLFW_KEY_A));
+    switch (key)
+    {
+    case GLFW_KEY_SPACE:         return ImGuiKey_Space;
+    case GLFW_KEY_ESCAPE:        return ImGuiKey_Escape;
+    case GLFW_KEY_TAB:           return ImGuiKey_Tab;
+    case GLFW_KEY_BACKSPACE:     return ImGuiKey_Backspace;
+    case GLFW_KEY_LEFT_SHIFT:    return ImGuiKey_LeftShift;
+    case GLFW_KEY_RIGHT_SHIFT:   return ImGuiKey_RightShift;
+    case GLFW_KEY_LEFT_CONTROL:  return ImGuiKey_LeftCtrl;
+    case GLFW_KEY_RIGHT_CONTROL: return ImGuiKey_RightCtrl;
+    case GLFW_KEY_LEFT_ALT:      return ImGuiKey_LeftAlt;
+    case GLFW_KEY_RIGHT_ALT:     return ImGuiKey_RightAlt;
+    case GLFW_KEY_LEFT:          return ImGuiKey_LeftArrow;
+    case GLFW_KEY_RIGHT:         return ImGuiKey_RightArrow;
+    case GLFW_KEY_UP:            return ImGuiKey_UpArrow;
+    case GLFW_KEY_DOWN:          return ImGuiKey_DownArrow;
+    default:                     return ImGuiKey_None;
+    }
+}
 
 static EM_BOOL em_mousemove_callback(int eventType, const EmscriptenMouseEvent *e, void *userData)
 {
@@ -87,141 +109,6 @@ static EM_BOOL em_on_mouse_up(int eventType, const EmscriptenMouseEvent *e, void
     return EM_FALSE; // Pass other buttons (like left-click) to GLFW's native handler
 }
 
-static EM_BOOL em_keydown_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData)
-{
-    if (!e)
-        return EM_FALSE;
-    // Letters: only single-character letter keys map to ASCII (avoid matching 'Shift', 'Tab', etc.)
-    if (e->key[1] == '\0' && std::isalpha((unsigned char)e->key[0]))
-    {
-        s_keyState.insert(std::toupper((unsigned char)e->key[0]));
-        return EM_TRUE;
-    }
-    // Special keys
-    if (std::strcmp(e->key, " ") == 0 || std::strcmp(e->key, "Space") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_SPACE);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Escape") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_ESCAPE);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Tab") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_TAB);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Shift") == 0 || std::strcmp(e->key, "ShiftLeft") == 0 || std::strcmp(e->key, "ShiftRight") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_LEFT_SHIFT);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "ArrowLeft") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_LEFT);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "ArrowRight") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_RIGHT);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "ArrowUp") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_UP);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "ArrowDown") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_DOWN);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Control") == 0 || std::strcmp(e->key, "ControlLeft") == 0 || std::strcmp(e->key, "ControlRight") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_LEFT_CONTROL);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Alt") == 0 || std::strcmp(e->key, "AltLeft") == 0 || std::strcmp(e->key, "AltRight") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_LEFT_ALT);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Backspace") == 0)
-    {
-        s_keyState.insert(GLFW_KEY_BACKSPACE);
-        return EM_TRUE;
-    }
-    return EM_FALSE;
-}
-
-static EM_BOOL em_keyup_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData)
-{
-    if (!e)
-        return EM_FALSE;
-    if (e->key[1] == '\0' && std::isalpha((unsigned char)e->key[0]))
-    {
-        s_keyState.erase(std::toupper((unsigned char)e->key[0]));
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, " ") == 0 || std::strcmp(e->key, "Space") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_SPACE);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Escape") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_ESCAPE);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Tab") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_TAB);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Shift") == 0 || std::strcmp(e->key, "ShiftLeft") == 0 || std::strcmp(e->key, "ShiftRight") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_LEFT_SHIFT);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "ArrowLeft") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_LEFT);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "ArrowRight") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_RIGHT);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "ArrowUp") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_UP);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "ArrowDown") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_DOWN);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Control") == 0 || std::strcmp(e->key, "ControlLeft") == 0 || std::strcmp(e->key, "ControlRight") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_LEFT_CONTROL);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Alt") == 0 || std::strcmp(e->key, "AltLeft") == 0 || std::strcmp(e->key, "AltRight") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_LEFT_ALT);
-        return EM_TRUE;
-    }
-    if (std::strcmp(e->key, "Backspace") == 0)
-    {
-        s_keyState.erase(GLFW_KEY_BACKSPACE);
-        return EM_TRUE;
-    }
-    return EM_FALSE;
-}
 #endif
 
 // Provide cross-platform helpers declared in Window.hpp
@@ -267,9 +154,6 @@ Window::Window(int width, int height, const char *title)
     if (ctx > 0)
     {
         emscripten_webgl_make_context_current(ctx);
-        // Register keyboard callbacks to track pressed keys for `isKeyPressed()`
-        emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, em_keydown_callback);
-        emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, em_keyup_callback);
         emscripten_set_mousedown_callback("#canvas", NULL, EM_TRUE, em_on_mouse_down);
         emscripten_set_mouseup_callback("#canvas", NULL, EM_TRUE, em_on_mouse_up);
         // Attach mousemove handler directly to our canvas element so pointer-lock deltas arrive
@@ -377,7 +261,10 @@ void Window::framebuffer_size_callback(GLFWwindow *window, int width, int height
 bool Window::isKeyPressed(int key)
 {
 #if defined(__EMSCRIPTEN__)
-    return s_keyState.find(key) != s_keyState.end();
+    ImGuiKey imKey = glfwKeyToImGuiKey(key);
+    if (imKey != ImGuiKey_None)
+        return ImGui::IsKeyDown(imKey);
+    return false;
 #else
     return glfwGetKey(window, key) == GLFW_PRESS;
 #endif
