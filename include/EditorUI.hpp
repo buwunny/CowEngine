@@ -10,8 +10,18 @@ class Scene;
 class Window;
 class PhysicsWorld;
 class Object;
+class Camera;
+
 class EditorUI
 {
+public:
+    enum class GizmoOp
+    {
+        Translate,
+        Rotate,
+        Scale
+    };
+
 public:
     EditorUI();
 
@@ -25,6 +35,10 @@ public:
 
     void setVisible(bool visible) { showUI = visible; }
     bool isVisible() const { return showUI; }
+
+    void setCamera(Camera *cam) { cameraRef = cam; }
+    GizmoOp getGizmoOp() const { return gizmoOp; }
+    bool isMouseOverGizmo() const;
 
 private:
     struct ConsoleLine
@@ -46,6 +60,7 @@ private:
     void drawMainMenu();
     void drawDockspace();
     void drawGameView(Scene *scene);
+    void drawGizmoToolbar();
     void drawTestingOverlay();
     void drawSceneHierarchy(Scene *scene);
     void drawInspector(Scene *scene);
@@ -61,6 +76,11 @@ private:
     static int consoleTextEditCallback(ImGuiInputTextCallbackData *data);
 
     void addObjectToScene(Scene *scene, const std::string &type);
+
+    GizmoOp gizmoOp = GizmoOp::Translate;
+    bool gizmoLocal = false;
+    Camera *cameraRef = nullptr;
+    PhysicsWorld *physicsRef = nullptr;
 
     bool showUI = true;
     bool showHierarchy = true;

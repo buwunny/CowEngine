@@ -60,6 +60,7 @@ void Application::init()
 
     imguiLayer = new ImGuiLayer(window);
     editorUI = new EditorUI();
+    editorUI->setCamera(camera);
     editorInput = new InputHandler(camera);
 
 #ifdef __EMSCRIPTEN__
@@ -114,6 +115,9 @@ void Application::tick()
             editorUI->setSelection(nullptr);
             scene->setSelectedObject(nullptr);
             scene->forceReload();
+            // Pointer-lock during testing can cause key-up events to be missed, leaving
+            // ImGui's key state stale. Clear it so editor shortcuts work immediately.
+            ImGui::GetIO().ClearInputKeys();
         }
 
         lastTestingMode = testingMode;
@@ -297,9 +301,12 @@ void Application::checkSelection(float delta)
                     {
                         if (hitObject == scene->getSelectedObject())
                         {
-                            // Deselect if clicking the already selected object
-                            scene->setSelectedObject(nullptr);
-                            editorUI->setSelection(nullptr);
+                            // Only deselect if the mouse click wasn't over the gizmo handles
+                            if (!editorUI->isMouseOverGizmo())
+                            {
+                                scene->setSelectedObject(nullptr);
+                                editorUI->setSelection(nullptr);
+                            }
                         }
                         else
                         {
@@ -308,6 +315,14 @@ void Application::checkSelection(float delta)
                         }
                     }
                     std::string typeName(hitObject->getTypeName());
+                }
+                else
+                {
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    {
+                        scene->setSelectedObject(nullptr);
+                        editorUI->setSelection(nullptr);
+                    }
                 }
             }
         }

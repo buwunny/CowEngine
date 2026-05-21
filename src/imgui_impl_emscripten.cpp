@@ -122,6 +122,11 @@ static ImGuiKey mapKeyStringToImGuiKey(const char *key)
             int idx = std::toupper((unsigned char)c) - 'A';
             return static_cast<ImGuiKey>(ImGuiKey_A + idx);
         }
+        if (std::isdigit((unsigned char)c))
+        {
+            int idx = c - '0';
+            return static_cast<ImGuiKey>(ImGuiKey_0 + idx);
+        }
     }
     return ImGuiKey_None;
 }

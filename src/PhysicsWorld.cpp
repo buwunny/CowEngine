@@ -46,3 +46,10 @@ void PhysicsWorld::stepSimulation(float deltaTime, int maxSubSteps)
         return;
     dynamicsWorld->stepSimulation(deltaTime, maxSubSteps);
 }
+
+void PhysicsWorld::updateSingleAabb(btRigidBody *body)
+{
+    if (!dynamicsWorld || !body)
+        return;
+    dynamicsWorld->updateSingleAabb(body);
+}

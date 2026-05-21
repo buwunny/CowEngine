@@ -110,6 +110,21 @@ if(NOT EMSCRIPTEN)
     target_include_directories(imgui_native PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
     target_compile_definitions(imgui_native PRIVATE IMGUI_ENABLE_DOCKING)
 
+    FetchContent_Declare(
+        imguizmo_repo
+        GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
+        GIT_TAG master
+    )
+    FetchContent_GetProperties(imguizmo_repo)
+    if(NOT imguizmo_repo_POPULATED)
+        FetchContent_Populate(imguizmo_repo)
+    endif()
+
+    add_library(imguizmo_native STATIC ${imguizmo_repo_SOURCE_DIR}/src/ImGuizmo.cpp)
+    target_include_directories(imguizmo_native PUBLIC ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src ${imgui_repo_SOURCE_DIR})
+    target_link_libraries(imguizmo_native PUBLIC imgui_native)
+    target_compile_definitions(imguizmo_native PRIVATE IMGUI_ENABLE_DOCKING)
+
     target_link_libraries(CowEngine PRIVATE
         glad::glad
         glfw
@@ -117,12 +132,13 @@ if(NOT EMSCRIPTEN)
         OpenGL::GL
         nlohmann_json::nlohmann_json
         imgui_native
+        imguizmo_native
         BulletDynamics
         BulletCollision
         LinearMath
     )
     target_compile_definitions(CowEngine PRIVATE USE_IMGUI ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
-    target_include_directories(CowEngine PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
+    target_include_directories(CowEngine PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet ${imguizmo_repo_SOURCE_DIR})
 
     add_custom_command(TARGET CowEngine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -191,6 +207,7 @@ if(EMSCRIPTEN)
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scenes@/scenes")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/shaders@/shaders")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")
+    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/icons/png@/icons/png")
 
     # Join flags into a single string and attach to target
     string(JOIN " " WEB_LINK_FLAGS_STR ${WEB_LINK_FLAGS})
@@ -214,9 +231,25 @@ if(EMSCRIPTEN)
     target_include_directories(imgui_web PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
     target_compile_definitions(imgui_web PRIVATE IMGUI_ENABLE_DOCKING)
 
-    # Link imgui into the web executable and expose USE_IMGUI to compile-time
-    target_link_libraries(CowEngine_web PRIVATE imgui_web)
+    FetchContent_Declare(
+        imguizmo_repo
+        GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
+        GIT_TAG master
+    )
+    FetchContent_GetProperties(imguizmo_repo)
+    if(NOT imguizmo_repo_POPULATED)
+        FetchContent_Populate(imguizmo_repo)
+    endif()
+
+    add_library(imguizmo_web STATIC ${imguizmo_repo_SOURCE_DIR}/src/ImGuizmo.cpp)
+    target_include_directories(imguizmo_web PUBLIC ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src ${imgui_repo_SOURCE_DIR})
+    target_link_libraries(imguizmo_web PUBLIC imgui_web)
+    target_compile_definitions(imguizmo_web PRIVATE IMGUI_ENABLE_DOCKING)
+
+    # Link imgui + imguizmo into the web executable and expose USE_IMGUI to compile-time
+    target_link_libraries(CowEngine_web PRIVATE imgui_web imguizmo_web)
     target_compile_definitions(CowEngine_web PRIVATE USE_IMGUI)
+    target_include_directories(CowEngine_web PRIVATE ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src)
 
     # Do not attempt to copy shaders at post-build for the web target (preloaded instead)
     # Copy our custom HTML shell into the web output so Pages serves our UI as index.html

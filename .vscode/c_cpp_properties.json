@@ -9,13 +9,17 @@
                 "${workspaceFolder}/vcpkg_installed/x64-linux/include/**",
                 "${workspaceFolder}/build-web/_deps/imgui_repo-src",
                 "${workspaceFolder}/build-web/_deps/imgui_repo-src/backends",
+                "${workspaceFolder}/build-web/_deps/bullet_repo-src/src",
                 "${workspaceFolder}/build-native/_deps/imgui_repo-src",
                 "${workspaceFolder}/build-native/_deps/imgui_repo-src/backends",
+                "${workspaceFolder}/build-web/_deps/imguizmo_repo-src",
+                "${workspaceFolder}/build-native/_deps/imguizmo_repo-src",
                 "/usr/include/",
                 "/usr/local/include/",
                 "/usr/include/GL",
                 "/usr/include/bullet",
-                "/usr/include/glm"
+                "/usr/include/glm",
+                "${HOME}/emsdk/upstream/emscripten/cache/sysroot/include/"
             ],
             "defines": [
                 "IMGUI_ENABLE_DOCKING",

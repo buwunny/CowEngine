@@ -22,6 +22,7 @@ public:
     }
     btVector3 getGravity() const { return dynamicsWorld ? dynamicsWorld->getGravity() : btVector3(0, 0, 0); }
     void stepSimulation(float deltaTime, int maxSubSteps = 10);
+    void updateSingleAabb(btRigidBody *body);
 
 private:
     btDefaultCollisionConfiguration *collisionConfiguration;
