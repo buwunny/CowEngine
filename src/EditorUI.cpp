@@ -956,9 +956,9 @@ void EditorUI::drawHelpTab()
     ImGui::MarkdownConfig mdConfig{};
     mdConfig.formatCallback = helpFormatCallback;
     mdConfig.formatFlags = ImGuiMarkdownFormatFlags_GithubStyle;
-    mdConfig.headingFormats[0] = {ImGuiLayer::fontH1, true};  // H1: bold 30px + separator
-    mdConfig.headingFormats[1] = {ImGuiLayer::fontH2, true};  // H2: bold 25px + separator
-    mdConfig.headingFormats[2] = {ImGuiLayer::fontH3, false}; // H3: semibold 20px
+    mdConfig.headingFormats[0] = {ImGuiLayer::fontH1, true};  // H1: bold 28px + separator
+    mdConfig.headingFormats[1] = {ImGuiLayer::fontH2, true};  // H2: bold 24px + separator
+    mdConfig.headingFormats[2] = {ImGuiLayer::fontH3, false}; // H3: semibold 18px
 
     ImGui::BeginChild("HelpRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
     for (auto &section : helpSections)

@@ -56,9 +56,9 @@ ImGuiLayer::ImGuiLayer(Window *window) : impl(new Impl())
     const char *bold = "engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf/JetBrainsMono-Bold.ttf";
     const char *semi = "engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf/JetBrainsMono-SemiBold.ttf";
     loadFont(reg, 20.0f);           // index 0 → default UI font
-    fontH1 = loadFont(bold, 30.0f); // index 1 → H1 headings
-    fontH2 = loadFont(bold, 25.0f); // index 2 → H2 headings
-    fontH3 = loadFont(semi, 20.0f); // index 3 → H3 headings
+    fontH1 = loadFont(bold, 28.0f); // index 1 → H1 headings
+    fontH2 = loadFont(bold, 24.0f); // index 2 → H2 headings
+    fontH3 = loadFont(semi, 18.0f); // index 3 → H3 headings
 
     ImGui::StyleColorsDark();
     ImGuiStyle &style = ImGui::GetStyle();
