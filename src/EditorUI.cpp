@@ -13,6 +13,7 @@
 #include "objects/StaticObject.hpp"
 #include "meshes/AssetManager.hpp"
 #include "CodeEditor.hpp"
+#include "ImGuiLayer.hpp"
 #include "script/CowScript.hpp"
 #include "script/ScriptHost.hpp"
 
@@ -276,7 +277,7 @@ void EditorUI::drawGizmoToolbar()
             if (iconsLoaded)
                 return;
             const int ICON_SIZE = 32;
-            std::string base = std::string("icons/png/");
+            std::string base = std::string("engine_assets/icons/png/");
             GLuint t1 = loadPNGTexture(base + "up-down-left-right-solid-full.png");
             GLuint t2 = loadPNGTexture(base + "rotate-solid-full.png");
             GLuint t3 = loadPNGTexture(base + "expand-solid-full.png");
@@ -374,6 +375,10 @@ void EditorUI::drawWorkspace(Scene *scene)
     if (ImGui::BeginTabBar("##WorkspaceTabs", ImGuiTabBarFlags_None))
     {
         ImGuiTabItemFlags sceneFlags = (requestedTab == WorkspaceTab::SceneTab) ? ImGuiTabItemFlags_SetSelected : 0;
+        ImGuiTabItemFlags codeFlags = (requestedTab == WorkspaceTab::CodeTab) ? ImGuiTabItemFlags_SetSelected : 0;
+        ImGuiTabItemFlags helpFlags = (requestedTab == WorkspaceTab::HelpTab) ? ImGuiTabItemFlags_SetSelected : 0;
+        requestedTab = WorkspaceTab::None;
+
         if (ImGui::BeginTabItem("Scene", nullptr, sceneFlags))
         {
             activeTab = WorkspaceTab::SceneTab;
@@ -381,25 +386,20 @@ void EditorUI::drawWorkspace(Scene *scene)
             drawSceneTab(scene);
             ImGui::EndTabItem();
         }
-        requestedTab = WorkspaceTab::None;
 
-        ImGuiTabItemFlags codeFlags = (requestedTab == WorkspaceTab::CodeTab) ? ImGuiTabItemFlags_SetSelected : 0;
         if (ImGui::BeginTabItem("Code", nullptr, codeFlags))
         {
             activeTab = WorkspaceTab::CodeTab;
             drawCodeTab(scene);
             ImGui::EndTabItem();
         }
-        requestedTab = WorkspaceTab::None;
 
-        ImGuiTabItemFlags helpFlags = (requestedTab == WorkspaceTab::HelpTab) ? ImGuiTabItemFlags_SetSelected : 0;
         if (ImGui::BeginTabItem("Help", nullptr, helpFlags))
         {
             activeTab = WorkspaceTab::HelpTab;
             drawHelpTab();
             ImGui::EndTabItem();
         }
-        requestedTab = WorkspaceTab::None;
 
         ImGui::EndTabBar();
     }
@@ -616,29 +616,366 @@ void EditorUI::drawCodeTab(Scene *scene)
     codeEditor->render();
 }
 
+// ---------------------------------------------------------------------------
+// Help tab helpers
+// ---------------------------------------------------------------------------
+
+namespace
+{
+    // Same palette as CodeEditor so highlighted blocks feel consistent.
+    ImU32 helpTokenColor(cowscript::TokenKind k)
+    {
+        switch (k)
+        {
+        case cowscript::TokenKind::Comment:
+            return IM_COL32(110, 145, 110, 255);
+        case cowscript::TokenKind::Keyword:
+            return IM_COL32(198, 120, 221, 255);
+        case cowscript::TokenKind::Number:
+            return IM_COL32(255, 175, 100, 255);
+        case cowscript::TokenKind::String:
+            return IM_COL32(152, 195, 121, 255);
+        case cowscript::TokenKind::Builtin:
+            return IM_COL32(86, 180, 233, 255);
+        case cowscript::TokenKind::Operator:
+            return IM_COL32(200, 200, 220, 255);
+        case cowscript::TokenKind::Punctuation:
+            return IM_COL32(180, 180, 200, 255);
+        default:
+            return IM_COL32(220, 220, 220, 255);
+        }
+    }
+
+    // Draw a syntax-highlighted CowScript code block and advance the ImGui cursor past it.
+    void renderHelpCodeBlock(const std::string &code)
+    {
+        // Strip a single trailing newline so we don't render a spurious blank line.
+        const char *src = code.c_str();
+        size_t srcLen = code.size();
+        if (srcLen && src[srcLen - 1] == '\n')
+            --srcLen;
+
+        float lineH = ImGui::GetTextLineHeightWithSpacing();
+        float lineH2 = ImGui::GetTextLineHeight();
+
+        int numLines = 1;
+        for (size_t i = 0; i < srcLen; ++i)
+            if (src[i] == '\n')
+                ++numLines;
+
+        const float padX = 12.0f;
+        const float padY = 7.0f;
+        float availW = ImGui::GetContentRegionAvail().x;
+        float blockH = numLines * lineH - (lineH - lineH2) + padY * 2.0f;
+
+        ImVec2 tl = ImGui::GetCursorScreenPos();
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        ImFont *fnt = ImGui::GetFont();
+        float fs = ImGui::GetFontSize();
+
+        // Background + blue left accent bar.
+        dl->AddRectFilled(tl, ImVec2(tl.x + availW, tl.y + blockH),
+                          IM_COL32(22, 22, 32, 255), 5.0f);
+        dl->AddRectFilled(tl, ImVec2(tl.x + 3.0f, tl.y + blockH),
+                          IM_COL32(86, 156, 214, 180), 2.5f);
+
+        // Tokenise the trimmed source and draw each span.
+        std::string trimmed(src, srcLen);
+        auto tokens = cowscript::highlight(trimmed);
+
+        float cx = tl.x + padX;
+        float cy = tl.y + padY;
+
+        for (auto &tok : tokens)
+        {
+            if (tok.length <= 0)
+                continue;
+            ImU32 col = helpTokenColor(tok.kind);
+
+            const char *p = trimmed.c_str() + tok.start;
+            const char *end = p + tok.length;
+
+            while (p < end)
+            {
+                const char *nl = static_cast<const char *>(memchr(p, '\n', end - p));
+                if (!nl)
+                    nl = end;
+
+                if (nl > p)
+                {
+                    dl->AddText(fnt, fs, ImVec2(cx, cy), col, p, nl);
+                    cx += fnt->CalcTextSizeA(fs, FLT_MAX, 0.0f, p, nl).x;
+                }
+
+                if (nl < end)
+                {
+                    cy += lineH;
+                    cx = tl.x + padX;
+                    p = nl + 1;
+                }
+                else
+                    break;
+            }
+        }
+
+        // Advance ImGui's layout cursor past the block + a small gap.
+        ImGui::Dummy(ImVec2(availW, blockH + 6.0f));
+    }
+
+    // Colour headings; delegate everything else to the default callback.
+    void helpFormatCallback(const ImGui::MarkdownFormatInfo &info, bool start)
+    {
+        ImGui::defaultMarkdownFormatCallback(info, start);
+        if (info.type != ImGui::MarkdownFormatType::HEADING)
+            return;
+        if (start)
+        {
+            switch (info.level)
+            {
+            case 1:
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.85f, 0.40f, 1.0f));
+                break; // gold
+            case 2:
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.83f, 1.00f, 1.0f));
+                break; // sky blue
+            case 3:
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 1.00f, 0.72f, 1.0f));
+                break; // mint
+            default:
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
+                break;
+            }
+        }
+        else
+        {
+            ImGui::PopStyleColor();
+        }
+    }
+
+    // Returns true if a markdown table row is a separator (|---|---|).
+    bool isSeparatorRow(const std::string &line)
+    {
+        bool hasDash = false;
+        for (char c : line)
+        {
+            if (c == '-')
+            {
+                hasDash = true;
+                continue;
+            }
+            if (c == '|' || c == ':' || c == ' ' || c == '\t')
+                continue;
+            return false;
+        }
+        return hasDash;
+    }
+
+    // Split a pipe-delimited table row into trimmed cell strings.
+    std::vector<std::string> parseTableRow(const std::string &line)
+    {
+        std::vector<std::string> cells;
+        size_t pos = (!line.empty() && line[0] == '|') ? 1 : 0;
+        while (pos <= line.size())
+        {
+            size_t next = line.find('|', pos);
+            if (next == std::string::npos)
+                next = line.size();
+            std::string cell = line.substr(pos, next - pos);
+            auto s = cell.find_first_not_of(" \t");
+            auto e = cell.find_last_not_of(" \t");
+            cells.push_back(s == std::string::npos ? "" : cell.substr(s, e - s + 1));
+            pos = next + 1;
+        }
+        // Drop trailing empty cell left by a closing `|`.
+        if (!cells.empty() && cells.back().empty())
+            cells.pop_back();
+        return cells;
+    }
+
+    // Render a markdown table using ImGui::BeginTable.
+    void renderHelpTable(const std::string &content)
+    {
+        using namespace std;
+        vector<vector<string>> rows;
+        size_t pos = 0;
+        while (pos <= content.size())
+        {
+            size_t nl = content.find('\n', pos);
+            if (nl == string::npos)
+                nl = content.size();
+            if (nl > pos)
+            {
+                string line = content.substr(pos, nl - pos);
+                if (!isSeparatorRow(line))
+                    rows.push_back(parseTableRow(line));
+            }
+            pos = nl + 1;
+        }
+        if (rows.empty() || rows[0].empty())
+            return;
+
+        int cols = (int)rows[0].size();
+        ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                ImGuiTableFlags_SizingStretchProp |
+                                ImGuiTableFlags_NoHostExtendX;
+
+        // Use the content pointer as a stable per-table ID.
+        ImGui::PushID(content.c_str());
+        if (ImGui::BeginTable("##t", cols, flags))
+        {
+            // First row becomes the column headers.
+            for (auto &cell : rows[0])
+                ImGui::TableSetupColumn(cell.c_str());
+            ImGui::TableHeadersRow();
+
+            for (size_t r = 1; r < rows.size(); ++r)
+            {
+                ImGui::TableNextRow();
+                for (int c = 0; c < cols; ++c)
+                {
+                    ImGui::TableSetColumnIndex(c);
+                    const string &cell = (c < (int)rows[r].size()) ? rows[r][c] : "";
+                    // Strip backticks — imgui_markdown doesn't support inline code
+                    // and they look noisy inside table cells.
+                    string text;
+                    text.reserve(cell.size());
+                    for (char ch : cell)
+                        if (ch != '`')
+                            text += ch;
+                    ImGui::TextWrapped("%s", text.c_str());
+                }
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopID();
+        ImGui::Spacing();
+    }
+
+    // Split markdown into Text / Code / Table sections by scanning line-by-line.
+    std::vector<EditorUI::HelpSection> splitHelpMarkdown(const std::string &md)
+    {
+        using Kind = EditorUI::HelpSection::Kind;
+        std::vector<EditorUI::HelpSection> out;
+
+        enum class Mode
+        {
+            Text,
+            Code,
+            Table
+        } mode = Mode::Text;
+        std::string buf;
+
+        auto flush = [&](Kind k)
+        {
+            if (!buf.empty())
+            {
+                out.push_back({k, std::move(buf)});
+                buf.clear();
+            }
+        };
+
+        size_t pos = 0;
+        while (pos <= md.size())
+        {
+            size_t nl = md.find('\n', pos);
+            bool hasNl = (nl != std::string::npos);
+            if (!hasNl)
+                nl = md.size();
+
+            std::string line = md.substr(pos, nl - pos);
+            pos = hasNl ? nl + 1 : md.size() + 1;
+
+            if (mode == Mode::Code)
+            {
+                if (line.substr(0, 3) == "```")
+                {
+                    flush(Kind::Code);
+                    mode = Mode::Text;
+                }
+                else
+                    buf += line + "\n";
+            }
+            else if (!line.empty() && line[0] == '|')
+            {
+                if (mode == Mode::Text)
+                    flush(Kind::Text);
+                mode = Mode::Table;
+                buf += line + "\n";
+            }
+            else if (line.substr(0, 3) == "```")
+            {
+                if (mode == Mode::Table)
+                    flush(Kind::Table);
+                else
+                    flush(Kind::Text);
+                mode = Mode::Code;
+            }
+            else
+            {
+                if (mode == Mode::Table)
+                    flush(Kind::Table);
+                mode = Mode::Text;
+                // imgui_markdown only recognises *** and ___ as horizontal rules,
+                // not --- (standard CommonMark). Remap standalone --- to ***.
+                buf += (line == "---" ? "***" : line) + "\n";
+            }
+        }
+        if (mode == Mode::Text)
+            flush(Kind::Text);
+        else if (mode == Mode::Code)
+            flush(Kind::Code);
+        else
+            flush(Kind::Table);
+
+        return out;
+    }
+} // anonymous namespace
+
 void EditorUI::drawHelpTab()
 {
     if (!helpMarkdownLoaded)
     {
+        std::string raw;
         std::ifstream in("src/help.md");
         if (!in)
         {
-            helpMarkdown = "Help file not found: help.md";
+            raw = "Help file not found: src/help.md";
         }
         else
         {
             std::ostringstream ss;
             ss << in.rdbuf();
-            helpMarkdown = ss.str();
-            if (helpMarkdown.empty())
-                helpMarkdown = "(No help content available.)";
+            raw = ss.str();
+            if (raw.empty())
+                raw = "(No help content available.)";
         }
+        helpSections = splitHelpMarkdown(raw);
         helpMarkdownLoaded = true;
     }
 
-    ImGui::BeginChild("HelpRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
     ImGui::MarkdownConfig mdConfig{};
-    ImGui::Markdown(helpMarkdown.c_str(), helpMarkdown.length(), mdConfig);
+    mdConfig.formatCallback = helpFormatCallback;
+    mdConfig.formatFlags = ImGuiMarkdownFormatFlags_GithubStyle;
+    mdConfig.headingFormats[0] = {ImGuiLayer::fontH1, true};  // H1: bold 30px + separator
+    mdConfig.headingFormats[1] = {ImGuiLayer::fontH2, true};  // H2: bold 25px + separator
+    mdConfig.headingFormats[2] = {ImGuiLayer::fontH3, false}; // H3: semibold 20px
+
+    ImGui::BeginChild("HelpRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+    for (auto &section : helpSections)
+    {
+        switch (section.kind)
+        {
+        case HelpSection::Kind::Code:
+            renderHelpCodeBlock(section.content);
+            break;
+        case HelpSection::Kind::Table:
+            renderHelpTable(section.content);
+            break;
+        default:
+            ImGui::Markdown(section.content.c_str(), section.content.size(), mdConfig);
+            break;
+        }
+    }
     ImGui::EndChild();
 }
 
@@ -955,6 +1292,11 @@ void EditorUI::drawRuntime(Scene *scene)
         emscripten_run_script(ss.str().c_str());
 #endif
     }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Camera Speed");
+
+    ImGui::DragFloat("##CameraSpeed", &cameraSpeed, 0.1f);
 
     ImGui::End();
 }

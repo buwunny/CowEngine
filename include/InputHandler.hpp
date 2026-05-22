@@ -19,6 +19,7 @@ public:
     void processMouse(GLFWwindow *window, float xpos, float ypos);
     void processMouseDelta(float dx, float dy);
     void resetFirstMouse();
+    void setMovementSpeed(float speed) { movementSpeed = speed; }
     static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
 
 private:

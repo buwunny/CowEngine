@@ -165,7 +165,9 @@ void Application::tick()
 
     if (!testingMode && editorInput && allowGameInput)
     {
-        checkSelection(delta);
+        editorInput->setMovementSpeed(editorUI->getCameraSpeed());
+        editorInput->processInput(window, delta);
+        checkSelection();
         // process mouse when in editor mode and game view is focused, only if cursor is disabled (e.g. on web)
         if (editorUI && editorUI->isGameViewInputEnabled() && window->isCursorDisabled())
         {
@@ -291,9 +293,8 @@ void Application::runDesktop()
     }
 }
 
-void Application::checkSelection(float delta)
+void Application::checkSelection()
 {
-    editorInput->processInput(window, delta);
     // Send raycast to scene to select objects in the editor when hovering in the game view and left-clicking
     if (editorUI && editorUI->isGameViewInputEnabled() && !window->isCursorDisabled())
     {

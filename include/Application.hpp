@@ -28,7 +28,7 @@ public:
     void runDesktop();
 
 private:
-    void checkSelection(float delta);
+    void checkSelection();
     void reloadScripts();
 
     PhysicsWorld *physics = nullptr;

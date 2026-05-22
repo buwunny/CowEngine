@@ -1,6 +1,30 @@
 #include "ImGuiLayer.hpp"
 #include "Window.hpp"
 #include <imgui.h>
+#include <cstdio>
+
+ImFont *ImGuiLayer::fontH1 = nullptr;
+ImFont *ImGuiLayer::fontH2 = nullptr;
+ImFont *ImGuiLayer::fontH3 = nullptr;
+
+namespace
+{
+    // Try the absolute ASSET_ROOT path first, then the relative CWD path.
+    ImFont *loadFont(const char *relPath, float size)
+    {
+        ImGuiIO &io = ImGui::GetIO();
+#ifdef ASSET_ROOT
+        {
+            char buf[512];
+            std::snprintf(buf, sizeof(buf), "%s/%s", ASSET_ROOT, relPath);
+            ImFont *f = io.Fonts->AddFontFromFileTTF(buf, size);
+            if (f)
+                return f;
+        }
+#endif
+        return io.Fonts->AddFontFromFileTTF(relPath, size);
+    }
+}
 #if defined(__EMSCRIPTEN__)
 #include "imgui_impl_emscripten.h"
 #include "imgui_impl_opengl3.h"
@@ -26,6 +50,16 @@ ImGuiLayer::ImGuiLayer(Window *window) : impl(new Impl())
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    // Load JetBrains Mono. The first font added becomes the default UI font.
+    const char *reg = "engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf/JetBrainsMono-Regular.ttf";
+    const char *bold = "engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf/JetBrainsMono-Bold.ttf";
+    const char *semi = "engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf/JetBrainsMono-SemiBold.ttf";
+    loadFont(reg, 20.0f);           // index 0 → default UI font
+    fontH1 = loadFont(bold, 30.0f); // index 1 → H1 headings
+    fontH2 = loadFont(bold, 25.0f); // index 2 → H2 headings
+    fontH3 = loadFont(semi, 20.0f); // index 3 → H3 headings
+
     ImGui::StyleColorsDark();
     ImGuiStyle &style = ImGui::GetStyle();
     style.WindowRounding = 10.0f;

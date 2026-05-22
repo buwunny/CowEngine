@@ -33,6 +33,11 @@ public:
     };
 
 public:
+    struct HelpSection {
+        enum class Kind { Text, Code, Table } kind = Kind::Text;
+        std::string content;
+    };
+
     EditorUI();
     ~EditorUI();
 
@@ -43,6 +48,7 @@ public:
     bool getGameViewport(float &x, float &y, float &w, float &h, float &scaleX, float &scaleY) const;
     bool isTestingMode() const { return testingMode; }
     bool isGameViewInputEnabled() const { return gameViewInput; }
+    float getCameraSpeed() const { return cameraSpeed; }
     void setGameTexture(ImTextureID textureId, float width, float height);
     void setSelection(Object *object);
     void setRequestedTab(WorkspaceTab tab);
@@ -123,6 +129,7 @@ private:
     std::string lastSavePath;
 
     float mouseSensitivity = 1.0f;
+    float cameraSpeed = 5.0f;
 
     float gameViewportX = 0.0f;
     float gameViewportY = 0.0f;
@@ -142,7 +149,8 @@ private:
     std::unique_ptr<CodeEditor> codeEditor;
     ScriptHost *scriptHostRef = nullptr;
     char newScriptName[128] = "scripts/cow/new_script.cow";
-    std::string helpMarkdown;
+
+    std::vector<HelpSection> helpSections;
     bool helpMarkdownLoaded = false;
 };
 
