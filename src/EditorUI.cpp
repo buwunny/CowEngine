@@ -286,8 +286,8 @@ void EditorUI::drawGizmoToolbar()
             GLuint t1 = loadPNGTexture(base + "up-down-left-right-solid-full.png");
             GLuint t2 = loadPNGTexture(base + "rotate-solid-full.png");
             GLuint t3 = loadPNGTexture(base + "expand-solid-full.png");
-            GLuint t4 = loadPNGTexture(base + "globe-solid-full.png");
-            GLuint t5 = loadPNGTexture(base + "location-dot-solid-full.png");
+            // GLuint t4 = loadPNGTexture(base + "globe-solid-full.png");
+            // GLuint t5 = loadPNGTexture(base + "location-dot-solid-full.png");
 
             auto createTex = [&](const std::vector<unsigned char> &px)
             {
@@ -301,13 +301,13 @@ void EditorUI::drawGizmoToolbar()
                 return tex;
             };
 
-            if (t1 && t2 && t3 && t4 && t5)
+            if (t1 && t2 && t3) // && t4 && t5)
             {
                 texTranslate = t1;
                 texRotate = t2;
                 texScale = t3;
-                texWorld = t4;
-                texLocal = t5;
+                // texWorld = t4;
+                // texLocal = t5;
             }
             else
             {
@@ -315,8 +315,8 @@ void EditorUI::drawGizmoToolbar()
                 texTranslate = createTex(generateIconPixels(ICON_SIZE, 0x33, 0x99, 0xFF)); // blue
                 texRotate = createTex(generateIconPixels(ICON_SIZE, 0x33, 0xCC, 0x66));    // green
                 texScale = createTex(generateIconPixels(ICON_SIZE, 0xFF, 0x99, 0x33));     // orange
-                texWorld = createTex(generateIconPixels(ICON_SIZE, 0x66, 0xCC, 0xFF));     // light blue
-                texLocal = createTex(generateIconPixels(ICON_SIZE, 0xCC, 0xCC, 0x66));     // yellow
+                // texWorld = createTex(generateIconPixels(ICON_SIZE, 0x66, 0xCC, 0xFF));     // light blue
+                // texLocal = createTex(generateIconPixels(ICON_SIZE, 0xCC, 0xCC, 0x66));     // yellow
             }
 
             iconsLoaded = true;
@@ -345,9 +345,9 @@ void EditorUI::drawGizmoToolbar()
         ImGui::SameLine();
         toolBtnTex("##gizmo_scale", texScale, "Scale (3)", GizmoOp::Scale);
 
-        ImGui::SameLine();
-        ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-        ImGui::SameLine();
+        // ImGui::SameLine();
+        // ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+        // ImGui::SameLine();
 
         auto modeBtnTex = [&](const char *id, GLuint tex, const char *tooltip, bool local)
         {
@@ -360,9 +360,9 @@ void EditorUI::drawGizmoToolbar()
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", tooltip);
         };
-        modeBtnTex("##gizmo_world", texWorld, "World space", false);
-        ImGui::SameLine();
-        modeBtnTex("##gizmo_local", texLocal, "Local space", true);
+        // modeBtnTex("##gizmo_world", texWorld, "World space", false);
+        // ImGui::SameLine();
+        // modeBtnTex("##gizmo_local", texLocal, "Local space", true);
 
         ImGui::PopStyleVar(); // FramePadding
     }
@@ -1253,7 +1253,7 @@ namespace
     // ASSET_ROOT/<rel> on native, then a couple of common parent dirs.
     fs::path resolveAssetDir(const std::string &rel)
     {
-        std::vector<fs::path> candidates = { fs::path(rel) };
+        std::vector<fs::path> candidates = {fs::path(rel)};
 #if defined(ASSET_ROOT) && !defined(__EMSCRIPTEN__)
         candidates.emplace_back(fs::path(ASSET_ROOT) / rel);
 #endif
@@ -1276,17 +1276,21 @@ namespace
     {
         std::vector<std::string> out;
         fs::path dir = resolveAssetDir(rootRel);
-        if (dir.empty()) return out;
+        if (dir.empty())
+            return out;
 
         std::error_code ec;
         for (auto it = fs::recursive_directory_iterator(dir, ec);
              !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
         {
             const fs::directory_entry &entry = *it;
-            if (!entry.is_regular_file(ec)) continue;
-            if (entry.path().extension() != ext) continue;
+            if (!entry.is_regular_file(ec))
+                continue;
+            if (entry.path().extension() != ext)
+                continue;
             fs::path rel = fs::relative(entry.path(), dir, ec);
-            if (ec) continue;
+            if (ec)
+                continue;
             out.push_back(rootRel + "/" + rel.generic_string());
         }
         std::sort(out.begin(), out.end());
@@ -1297,14 +1301,15 @@ namespace
 void EditorUI::refreshFileBrowser()
 {
     fileBrowserScripts = scanFiles("scripts", ".cow");
-    fileBrowserModels  = scanFiles("models",  ".obj");
-    fileBrowserScenes  = scanFiles("scenes",  ".json");
-    fileBrowserLoaded  = true;
+    fileBrowserModels = scanFiles("models", ".obj");
+    fileBrowserScenes = scanFiles("scenes", ".json");
+    fileBrowserLoaded = true;
 }
 
 void EditorUI::spawnStaticObjectFromMesh(Scene *scene, const std::string &meshPath)
 {
-    if (!scene) return;
+    if (!scene)
+        return;
     auto &am = AssetManager::instance();
     // Use the filename stem as the cache key so the same mesh isn't loaded twice.
     std::string key = fs::path(meshPath).stem().string();
@@ -1342,7 +1347,8 @@ void EditorUI::drawFileBrowser(Scene *scene)
     ImGui::Separator();
 
     auto drawSection = [&](const char *label, const std::vector<std::string> &entries,
-                           const std::function<void(const std::string &)> &onActivate) {
+                           const std::function<void(const std::string &)> &onActivate)
+    {
         char header[64];
         std::snprintf(header, sizeof(header), "%s (%zu)", label, entries.size());
         if (!ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen))
@@ -1363,19 +1369,19 @@ void EditorUI::drawFileBrowser(Scene *scene)
         ImGui::Unindent();
     };
 
-    drawSection("Scripts", fileBrowserScripts, [&](const std::string &path) {
+    drawSection("Scripts", fileBrowserScripts, [&](const std::string &path)
+                {
         if (codeEditor)
         {
             codeEditor->openFile(path);
             requestedTab = WorkspaceTab::CodeTab;
-        }
-    });
+        } });
 
-    drawSection("Models", fileBrowserModels, [&](const std::string &path) {
-        spawnStaticObjectFromMesh(scene, path);
-    });
+    drawSection("Models", fileBrowserModels, [&](const std::string &path)
+                { spawnStaticObjectFromMesh(scene, path); });
 
-    drawSection("Scenes", fileBrowserScenes, [&](const std::string &path) {
+    drawSection("Scenes", fileBrowserScenes, [&](const std::string &path)
+                {
         if (scene && scene->loadFromJSON(path))
         {
             setSelection(nullptr);
@@ -1384,8 +1390,7 @@ void EditorUI::drawFileBrowser(Scene *scene)
         else
         {
             addLog("Failed to load scene " + path, ImVec4(0.95f, 0.5f, 0.5f, 1.0f));
-        }
-    });
+        } });
 
     ImGui::End();
 }
