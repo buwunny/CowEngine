@@ -154,6 +154,15 @@ void Application::tick()
     if (testingMode && scene->getPlayer() && (!uiCapturing || allowGameInput))
         scene->getPlayer()
             ->processInput(window, delta, physics);
+    // Keep firstMouse reset while cursor is free so any new right-click starts clean
+    if (!window->isCursorDisabled())
+    {
+        if (editorInput)
+            editorInput->resetFirstMouse();
+        if (!testingMode && scene->getPlayer())
+            scene->getPlayer()->resetInputState();
+    }
+
     if (!testingMode && editorInput && allowGameInput)
     {
         checkSelection(delta);

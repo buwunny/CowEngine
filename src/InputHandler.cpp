@@ -62,6 +62,11 @@ void InputHandler::processMouseDelta(float dx, float dy)
     this->camera->look(dx, dy);
 }
 
+void InputHandler::resetFirstMouse()
+{
+    firstMouse = true;
+}
+
 void InputHandler::mouse_callback(GLFWwindow *window, double xpos, double ypos)
 {
     InputHandler *inputHandler = static_cast<InputHandler *>(glfwGetWindowUserPointer(window));
