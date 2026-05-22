@@ -87,7 +87,7 @@
                 1.0,
                 1.0
             ],
-            "script": "scripts/cow/spin.cow",
+            "script": "scripts/spin.cow",
             "type": "StaticObject"
         },
         {
@@ -110,7 +110,7 @@
                 1.0,
                 1.0
             ],
-            "script": "scripts/cow/jump_on_space.cow",
+            "script": "scripts/jump_on_space.cow",
             "type": "StaticObject"
         },
         {

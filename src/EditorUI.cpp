@@ -18,6 +18,7 @@
 #include "script/ScriptHost.hpp"
 
 #include <filesystem>
+#include <functional>
 
 #include <algorithm>
 #include <cctype>
@@ -104,6 +105,8 @@ void EditorUI::render(Scene *scene, Window *window, PhysicsWorld *physics, float
             drawConsole(scene);
         if (showRuntime)
             drawRuntime(scene);
+        if (showFiles)
+            drawFileBrowser(scene);
     }
 }
 
@@ -133,6 +136,7 @@ void EditorUI::drawMainMenu()
             ImGui::MenuItem("Debug Console", nullptr, &showConsole);
             ImGui::MenuItem("Stats", nullptr, &showStats);
             ImGui::MenuItem("Runtime", nullptr, &showRuntime);
+            ImGui::MenuItem("Files", nullptr, &showFiles);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View"))
@@ -187,6 +191,7 @@ void EditorUI::drawDockspace()
         ImGui::DockBuilderDockWindow("Runtime", dockRightBottom);
         ImGui::DockBuilderDockWindow("Debug Console", dockBottom);
         ImGui::DockBuilderDockWindow("Stats", dockBottom);
+        ImGui::DockBuilderDockWindow("Files", dockBottom);
 
         ImGui::DockBuilderFinish(dockspaceId);
         dockLayoutBuilt = true;
@@ -1138,7 +1143,7 @@ void EditorUI::drawInspector(Scene *scene)
             std::string path = selection.object->getScriptPath();
             if (path.empty())
             {
-                addLog("Set a script path first (e.g. scripts/cow/spin.cow).",
+                addLog("Set a script path first (e.g. scripts/spin.cow).",
                        ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
             }
             else if (codeEditor)
@@ -1232,6 +1237,155 @@ void EditorUI::drawConsole(Scene *scene)
     ImGui::SetItemDefaultFocus();
     if (reclaimFocus)
         ImGui::SetKeyboardFocusHere(-1);
+
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// File browser
+// ---------------------------------------------------------------------------
+
+namespace
+{
+    namespace fs = std::filesystem;
+
+    // Locate an asset directory by trying the relative path first, then
+    // ASSET_ROOT/<rel> on native, then a couple of common parent dirs.
+    fs::path resolveAssetDir(const std::string &rel)
+    {
+        std::vector<fs::path> candidates = { fs::path(rel) };
+#if defined(ASSET_ROOT) && !defined(__EMSCRIPTEN__)
+        candidates.emplace_back(fs::path(ASSET_ROOT) / rel);
+#endif
+        candidates.emplace_back(fs::path("./") / rel);
+        candidates.emplace_back(fs::path("../") / rel);
+        candidates.emplace_back(fs::path("/") / rel); // Emscripten preload root
+        for (auto &c : candidates)
+        {
+            std::error_code ec;
+            if (fs::exists(c, ec) && fs::is_directory(c, ec))
+                return c;
+        }
+        return {};
+    }
+
+    // Recursively scan `rootRel` for files with `ext` (e.g. ".cow") and return
+    // paths formatted as "<rootRel>/<sub/path>" (forward slashes) for the UI
+    // and for assignment into engine APIs.
+    std::vector<std::string> scanFiles(const std::string &rootRel, const std::string &ext)
+    {
+        std::vector<std::string> out;
+        fs::path dir = resolveAssetDir(rootRel);
+        if (dir.empty()) return out;
+
+        std::error_code ec;
+        for (auto it = fs::recursive_directory_iterator(dir, ec);
+             !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+        {
+            const fs::directory_entry &entry = *it;
+            if (!entry.is_regular_file(ec)) continue;
+            if (entry.path().extension() != ext) continue;
+            fs::path rel = fs::relative(entry.path(), dir, ec);
+            if (ec) continue;
+            out.push_back(rootRel + "/" + rel.generic_string());
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+} // anonymous namespace
+
+void EditorUI::refreshFileBrowser()
+{
+    fileBrowserScripts = scanFiles("scripts", ".cow");
+    fileBrowserModels  = scanFiles("models",  ".obj");
+    fileBrowserScenes  = scanFiles("scenes",  ".json");
+    fileBrowserLoaded  = true;
+}
+
+void EditorUI::spawnStaticObjectFromMesh(Scene *scene, const std::string &meshPath)
+{
+    if (!scene) return;
+    auto &am = AssetManager::instance();
+    // Use the filename stem as the cache key so the same mesh isn't loaded twice.
+    std::string key = fs::path(meshPath).stem().string();
+    auto mesh = am.loadStaticMeshFromOBJ(meshPath, key);
+    if (!mesh)
+    {
+        addLog("Failed to load mesh: " + meshPath, ImVec4(0.95f, 0.5f, 0.5f, 1.0f));
+        return;
+    }
+    auto obj = std::make_unique<StaticObject>(
+        mesh, mesh->getVertices().data(), mesh->getVertexCount(),
+        mesh->getIndices().data(), mesh->getIndexCount(), mesh->getFloatsPerVertex(),
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)),
+        glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
+    obj->setMeshPath(meshPath);
+    obj->setName(key);
+    scene->addObject(std::move(obj));
+    addLog("Spawned " + meshPath, ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
+}
+
+void EditorUI::drawFileBrowser(Scene *scene)
+{
+    ImGui::Begin("Files", &showFiles);
+
+    if (!fileBrowserLoaded)
+        refreshFileBrowser();
+
+    if (ImGui::Button("Refresh"))
+        refreshFileBrowser();
+    ImGui::SameLine();
+    fileBrowserFilter.Draw("##fbfilter", 180.0f);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(double-click to open / spawn / load)");
+
+    ImGui::Separator();
+
+    auto drawSection = [&](const char *label, const std::vector<std::string> &entries,
+                           const std::function<void(const std::string &)> &onActivate) {
+        char header[64];
+        std::snprintf(header, sizeof(header), "%s (%zu)", label, entries.size());
+        if (!ImGui::CollapsingHeader(header, ImGuiTreeNodeFlags_DefaultOpen))
+            return;
+        ImGui::Indent();
+        if (entries.empty())
+            ImGui::TextDisabled("No files found.");
+        for (const auto &path : entries)
+        {
+            if (!fileBrowserFilter.PassFilter(path.c_str()))
+                continue;
+            ImGui::PushID(path.c_str());
+            ImGui::Selectable(path.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick);
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                onActivate(path);
+            ImGui::PopID();
+        }
+        ImGui::Unindent();
+    };
+
+    drawSection("Scripts", fileBrowserScripts, [&](const std::string &path) {
+        if (codeEditor)
+        {
+            codeEditor->openFile(path);
+            requestedTab = WorkspaceTab::CodeTab;
+        }
+    });
+
+    drawSection("Models", fileBrowserModels, [&](const std::string &path) {
+        spawnStaticObjectFromMesh(scene, path);
+    });
+
+    drawSection("Scenes", fileBrowserScenes, [&](const std::string &path) {
+        if (scene && scene->loadFromJSON(path))
+        {
+            setSelection(nullptr);
+            addLog("Loaded scene " + path, ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
+        }
+        else
+        {
+            addLog("Failed to load scene " + path, ImVec4(0.95f, 0.5f, 0.5f, 1.0f));
+        }
+    });
 
     ImGui::End();
 }

@@ -89,6 +89,9 @@ private:
     void drawStats(Scene *scene, float deltaSeconds, float fps);
     void drawConsole(Scene *scene);
     void drawRuntime(Scene *scene);
+    void drawFileBrowser(Scene *scene);
+    void refreshFileBrowser();
+    void spawnStaticObjectFromMesh(Scene *scene, const std::string &meshPath);
 
     void refreshSelectionCache();
     void applySelectionTransform();
@@ -110,6 +113,7 @@ private:
     bool showConsole = true;
     bool showStats = true;
     bool showRuntime = true;
+    bool showFiles = true;
     bool showGameView = true;
     bool testingMode = false;
     bool dockLayoutBuilt = false;
@@ -148,10 +152,16 @@ private:
 
     std::unique_ptr<CodeEditor> codeEditor;
     ScriptHost *scriptHostRef = nullptr;
-    char newScriptName[128] = "scripts/cow/new_script.cow";
+    char newScriptName[128] = "scripts/new_script.cow";
 
     std::vector<HelpSection> helpSections;
     bool helpMarkdownLoaded = false;
+
+    std::vector<std::string> fileBrowserScripts;
+    std::vector<std::string> fileBrowserModels;
+    std::vector<std::string> fileBrowserScenes;
+    bool fileBrowserLoaded = false;
+    ImGuiTextFilter fileBrowserFilter;
 };
 
 #endif // EDITOR_UI_HPP

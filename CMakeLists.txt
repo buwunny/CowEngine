@@ -209,9 +209,10 @@ if(EMSCRIPTEN)
     list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"callMain\"]")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scenes@/scenes")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/shaders@/shaders")
+    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/help.md@/src/help.md")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")
-    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/icons/png@/icons/png")
-    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scripts/cow@/scripts/cow")
+    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scripts@/scripts")
+    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/engine_assets@/engine_assets")
 
     # Join flags into a single string and attach to target
     string(JOIN " " WEB_LINK_FLAGS_STR ${WEB_LINK_FLAGS})

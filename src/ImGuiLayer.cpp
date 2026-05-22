@@ -9,11 +9,13 @@ ImFont *ImGuiLayer::fontH3 = nullptr;
 
 namespace
 {
-    // Try the absolute ASSET_ROOT path first, then the relative CWD path.
+    // Try the absolute ASSET_ROOT path first (native only), then the relative CWD path.
+    // On Emscripten, ASSET_ROOT is the native build machine's path and does not exist
+    // in the WASM virtual filesystem, so we skip it and rely on the preloaded relative path.
     ImFont *loadFont(const char *relPath, float size)
     {
         ImGuiIO &io = ImGui::GetIO();
-#ifdef ASSET_ROOT
+#if defined(ASSET_ROOT) && !defined(__EMSCRIPTEN__)
         {
             char buf[512];
             std::snprintf(buf, sizeof(buf), "%s/%s", ASSET_ROOT, relPath);

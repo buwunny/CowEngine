@@ -53,7 +53,7 @@ void Application::init()
 
     scene->addPlayer(std::make_unique<Player>(camera, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 10.0f))), window, *physics);
     if (scene->getPlayer())
-        scene->getPlayer()->setScriptPath("scripts/cow/shoot_cow.cow");
+        scene->getPlayer()->setScriptPath("scripts/shoot_cow.cow");
 
     // Ensure camera is positioned to match the player's initial transform on web builds
     camera->setPosition(glm::vec3(0.0f, 3.0f, 10.0f));
