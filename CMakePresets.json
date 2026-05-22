@@ -1,0 +1,91 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "_vcpkg-base",
+            "hidden": true,
+            "generator": "Unix Makefiles",
+            "environment": {
+                "VCPKG_ROOT": "$env{HOME}/vcpkg"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "USE_VCPKG": "ON",
+                "CMAKE_TOOLCHAIN_FILE": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            }
+        },
+        {
+            "name": "editor-native",
+            "displayName": "Editor (native, host platform)",
+            "description": "Builds the full CowEngine editor for the host OS.",
+            "inherits": "_vcpkg-base",
+            "binaryDir": "${sourceDir}/build/editor-native",
+            "cacheVariables": {
+                "BUILD_GAME": "OFF"
+            }
+        },
+        {
+            "name": "game-native",
+            "displayName": "Game (native, host platform)",
+            "description": "Builds the standalone game (no editor) for the host OS.",
+            "inherits": "_vcpkg-base",
+            "binaryDir": "${sourceDir}/build/game-native",
+            "cacheVariables": {
+                "BUILD_GAME": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/game-native"
+            }
+        },
+        {
+            "name": "game-web",
+            "displayName": "Game (WebAssembly)",
+            "description": "Builds the standalone game for the web via Emscripten. Requires emcmake.",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build/game-web",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_GAME": "ON",
+                "USE_VCPKG": "OFF",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/game-web"
+            }
+        },
+        {
+            "name": "editor-web",
+            "displayName": "Editor (WebAssembly)",
+            "description": "Builds the CowEngine editor for the web via Emscripten. Requires emcmake.",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build/editor-web",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_GAME": "OFF",
+                "USE_VCPKG": "OFF"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "editor-native",
+            "configurePreset": "editor-native",
+            "jobs": 0
+        },
+        {
+            "name": "game-native",
+            "configurePreset": "game-native",
+            "jobs": 0
+        },
+        {
+            "name": "game-web",
+            "configurePreset": "game-web",
+            "jobs": 0
+        },
+        {
+            "name": "editor-web",
+            "configurePreset": "editor-web",
+            "jobs": 0
+        }
+    ]
+}

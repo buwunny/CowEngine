@@ -8,9 +8,6 @@
 #include <sstream>
 #include <iomanip>
 #include <cstdlib>
-#ifdef __EMSCRIPTEN__
-extern "C" void spawnCow();
-#endif
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -47,7 +44,22 @@ void Application::init()
     camera = new Camera(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
     scene = new Scene();
-    if (!scene->loadFromJSON("scenes/scene.json"))
+    bool sceneLoaded = false;
+#ifdef __EMSCRIPTEN__
+    // For game builds: kGameHtmlTemplate writes the exported scene to localStorage
+    // ('cowengine_save') synchronously before CowEngine.js loads, so we find it here.
+    // For editor builds: this restores the scene from the last editor save.
+    EM_ASM({
+        var data = localStorage.getItem('cowengine_save');
+        if (data) {
+            Module.ccall('app_set_has_local_storage_data', null, ['number'], [1]);
+            Module.ccall('app_set_saved_data', null, ['string'], [data]);
+        }
+    });
+    if (hasLocalStorageData)
+        sceneLoaded = scene->loadFromString(pendingLocalStorageData);
+#endif
+    if (!sceneLoaded && !scene->loadFromJSON("scenes/scene.json"))
         scene->populateDefault();
     scene->addRigidBodiesToWorld(*physics);
 
@@ -60,6 +72,21 @@ void Application::init()
 
     shader = new Shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
 
+#ifdef COWENGINE_GAME
+    // Game-only build: no editor UI. ImGuiLayer is still constructed because
+    // on the web build Window::isKeyPressed reads ImGui's key state. Renders
+    // no widgets in game mode, so its presence is effectively free.
+    window->setCursorDisabled(true);
+    imguiLayer = new ImGuiLayer(window);
+
+    scriptHost = new ScriptHost();
+    scriptHost->setContext(scene, window);
+    scriptTime = 0.0;
+    scene->loadScripts(*scriptHost);
+    scriptHost->setTime(0.0);
+    scriptHost->setDelta(0.0);
+    scene->startScripts(*scriptHost);
+#else
     imguiLayer = new ImGuiLayer(window);
     editorUI = new EditorUI();
     editorUI->setCamera(camera);
@@ -72,6 +99,7 @@ void Application::init()
         if (editorUI)
             editorUI->addLog("[cow] " + line, ImVec4(0.7f, 0.95f, 0.7f, 1.0f)); });
     editorUI->setScriptHost(scriptHost);
+#endif
 
 #ifdef __EMSCRIPTEN__
     lastFrame = emscripten_get_now() / 1000.0;
@@ -91,6 +119,57 @@ static double getTimeSeconds()
 
 void Application::tick()
 {
+#ifdef COWENGINE_GAME
+    {
+        double current = getTimeSeconds();
+        float delta = static_cast<float>(current - lastFrame);
+        lastFrame = current;
+
+        int width = 0, height = 0;
+#ifdef __EMSCRIPTEN__
+        emscripten_get_canvas_element_size("canvas", &width, &height);
+#else
+        glfwGetFramebufferSize(window->getWindow(), &width, &height);
+        if (window->isKeyPressed(GLFW_KEY_ESCAPE))
+            window->close();
+#endif
+        if (width < 1)
+            width = 1;
+        if (height < 1)
+            height = 1;
+
+        physics->stepSimulation(delta, 10);
+        scriptTime += delta;
+        scriptHost->setTime(scriptTime);
+        scriptHost->setDelta(delta);
+        scene->updateScripts(*scriptHost, delta);
+
+        if (scene->getPlayer())
+            scene->getPlayer()->processInput(window, delta, physics);
+
+        // Maintain ImGui frame lifecycle (web needs ImGui IO updated for key polling)
+        imguiLayer->newFrame();
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        glClearColor(0.06f, 0.06f, 0.08f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        shader->use();
+        glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 10000.0f);
+        shader->setViewMatrix(view);
+        shader->setProjectionMatrix(projection);
+
+        scene->update();
+        scene->render(*window, *shader);
+
+        imguiLayer->render();
+        window->update();
+        return;
+    }
+#endif
+
     // Hot-reload
     scene->checkReload();
 
@@ -399,6 +478,20 @@ extern "C" EMSCRIPTEN_KEEPALIVE void app_run_main_loop()
 extern "C" EMSCRIPTEN_KEEPALIVE void app_set_global(Application *a)
 {
     g_app = a;
+}
+#endif
+#ifdef __EMSCRIPTEN__
+extern "C" EMSCRIPTEN_KEEPALIVE void app_set_has_local_storage_data(int hasData)
+{
+    if (g_app)
+        g_app->setHasLocalStorageData(hasData != 0);
+}
+#endif
+#ifdef __EMSCRIPTEN__
+extern "C" EMSCRIPTEN_KEEPALIVE void app_set_saved_data(const char *data)
+{
+    if (g_app)
+        g_app->setPendingLocalStorageData(std::string(data));
 }
 #endif
 #endif

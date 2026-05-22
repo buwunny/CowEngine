@@ -1,0 +1,11 @@
+{
+    "cmake.configurePreset": "editor-native",
+    "cmake.buildPreset": "editor-native",
+    "cmake.useCMakePresets": "always",
+    "cmake.configureOnOpen": true,
+    "cmake.environment": {
+        "CMAKE_TOOLCHAIN_FILE": "${env:HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_ROOT": "${env:HOME}/vcpkg",
+        "PATH": "${env:HOME}/emsdk:${env:HOME}/emsdk/upstream/emscripten:${env:HOME}/emsdk/node/22.16.0_64bit/bin:${env:PATH}"
+    }
+}

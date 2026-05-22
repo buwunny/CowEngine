@@ -2,27 +2,25 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run CowEngine (Debug)",
+            "name": "Run Editor (native)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/CowEngine",
+            "program": "${workspaceFolder}/build/editor-native/CowEngine",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build",
+            "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
-            "miDebuggerPath": "/usr/bin/gdb",
-            "preLaunchTask": "cmake-build"
+            "preLaunchTask": "Build Editor (native)"
         },
         {
-            "name": "Run CowEngine Web (Chrome)",
-            "type": "chrome",
+            "name": "Run Editor (web)",
+            "type": "pwa-chrome",
             "request": "launch",
-            "url": "http://localhost:8000/CowEngine.html",
+            "url": "http://localhost:8080/",
             "webRoot": "${workspaceFolder}",
-            "preLaunchTask": "build-and-serve",
-            "userDataDir": "${workspaceFolder}/.vscode/chrome-user-data",
+            "preLaunchTask": "Build Editor (web)"
         }
     ]
 }

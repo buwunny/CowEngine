@@ -33,8 +33,14 @@ public:
     };
 
 public:
-    struct HelpSection {
-        enum class Kind { Text, Code, Table } kind = Kind::Text;
+    struct HelpSection
+    {
+        enum class Kind
+        {
+            Text,
+            Code,
+            Table
+        } kind = Kind::Text;
         std::string content;
     };
 
@@ -76,7 +82,7 @@ private:
         bool hasCache = false;
     };
 
-    void drawMainMenu();
+    void drawMainMenu(Scene *scene);
     void drawDockspace();
     void drawWorkspace(Scene *scene);
     void drawSceneTab(Scene *scene);

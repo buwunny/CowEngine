@@ -28,6 +28,7 @@ public:
 
     void populateDefault();
     bool loadFromJSON(const std::string &path);
+    bool loadFromString(const std::string &jsonData);
     bool saveToJSON(const std::string &path);
     bool saveToMemory(std::string &outData);
     void checkReload();

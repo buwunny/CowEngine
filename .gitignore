@@ -1,4 +1,7 @@
-build-native
-build-web
+build
+dist
+CMakeFiles
+CMakeCache.txt
 vcpkg_installed
 imgui.ini
+!tools/build

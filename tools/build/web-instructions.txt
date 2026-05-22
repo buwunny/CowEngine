@@ -1,0 +1,19 @@
+Web build instructions
+
+This folder contains the web game output built by the project.
+
+To run locally:
+
+- Use the helper script from the project root:
+
+  ./serve-web.sh [PORT]
+
+  Example:
+
+  ./serve-web.sh 8080
+
+- Or use Python's simple HTTP server directly:
+
+  python3 -m http.server --directory . 8080
+
+Open http://localhost:8080/ in your browser.

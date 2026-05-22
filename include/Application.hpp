@@ -27,6 +27,12 @@ public:
     // Desktop run loop
     void runDesktop();
 
+#ifdef __EMSCRIPTEN__
+    // flag to see if we have local storage data to load on startup
+    void setHasLocalStorageData(bool hasData) { hasLocalStorageData = hasData; };
+    void setPendingLocalStorageData(const std::string &data) { pendingLocalStorageData = data; };
+#endif
+
 private:
     void checkSelection();
     void reloadScripts();
@@ -55,6 +61,11 @@ private:
     double fpsTimer = 0.0;
     bool lastRPressed = false;
     bool lastTestingMode = false;
+#ifdef __EMSCRIPTEN__
+    // flag to see if we have local storage data to load on startup
+    bool hasLocalStorageData = false;
+    std::string pendingLocalStorageData;
+#endif
 };
 
 #endif // APPLICATION_HPP

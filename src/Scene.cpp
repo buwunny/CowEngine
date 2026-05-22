@@ -13,6 +13,14 @@ Scene *Scene::s_current = nullptr;
 #include <iostream>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
+
+EM_JS(void, saveToLocalStorage, (const char *data), {
+    localStorage.setItem('cowengine_save', UTF8ToString(data));
+});
+#endif
 
 using json = nlohmann::json;
 
@@ -38,7 +46,6 @@ void Scene::populateDefault()
     objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
     objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
     objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
-
 }
 
 bool Scene::loadFromJSON(const std::string &path)
@@ -292,6 +299,21 @@ bool Scene::loadFromJSON(const std::string &path)
     return true;
 }
 
+bool Scene::loadFromString(const std::string &jsonData)
+{
+    // Load from string by writing to a temporary file and reusing existing logic
+    // (could be optimized by refactoring loadFromJSON to separate file reading and parsing)
+    std::string tempPath = "scene.json";
+    std::ofstream out(tempPath);
+    if (!out)
+        return false;
+    out << jsonData;
+    out.close();
+    bool result = loadFromJSON(tempPath);
+    std::filesystem::remove(tempPath);
+    return result;
+}
+
 bool Scene::saveToJSON(const std::string &path)
 {
     json j;
@@ -335,10 +357,20 @@ bool Scene::saveToJSON(const std::string &path)
     if (!scenePath.empty())
         j["scenePath"] = scenePath;
 
-    std::ofstream out(path);
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path outPath(path);
+    if (outPath.has_parent_path())
+        fs::create_directories(outPath.parent_path(), ec);
+    std::ofstream out(outPath);
     if (!out)
         return false;
     out << j.dump(4);
+
+// Also save to localStorage for web builds
+#ifdef __EMSCRIPTEN__
+    saveToLocalStorage(j.dump().c_str());
+#endif
     return true;
 }
 
@@ -386,7 +418,7 @@ void Scene::addPlayer(std::unique_ptr<Player> pl, Window *window, PhysicsWorld &
     // register input callbacks
     if (window && player)
     {
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
         glfwSetWindowUserPointer(window->getWindow(), player.get());
         glfwSetCursorPosCallback(window->getWindow(), Player::mouse_callback);
 #else

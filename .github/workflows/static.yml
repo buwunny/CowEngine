@@ -2,11 +2,6 @@ name: Deploy static content to Pages
 
 on:
   workflow_dispatch:
-    inputs:
-      buildType:
-        description: 'CMake build type'
-        required: false
-        default: 'Release'
 
 permissions:
   contents: read
@@ -40,17 +35,18 @@ jobs:
           ./emsdk activate latest
           source ./emsdk_env.sh
           cd $GITHUB_WORKSPACE
-          emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=${{ github.event.inputs.buildType || 'Release' }}
-          cmake --build build-web -j
+          emcmake cmake --preset game-web
+          cmake --build --preset game-web -j
+          cmake --install build/game-web
         shell: bash
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload build-web artifact
+      - name: Upload dist/game-web artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build-web
+          path: dist/game-web
 
       - name: Deploy to GitHub Pages
         id: deployment

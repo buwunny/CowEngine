@@ -114,7 +114,7 @@
             "type": "StaticObject"
         },
         {
-            "color": "#FF007FFF",
+            "color": "#FFFFFFFF",
             "mass": 0.0,
             "mesh": "models/eiffel_tower.obj",
             "name": "StaticObject 6",
@@ -129,9 +129,9 @@
                 0.0
             ],
             "scale": [
-                0.0010000000474974513,
-                0.0010000000474974513,
-                0.0010000000474974513
+                0.0020000000949949026,
+                0.004999999888241291,
+                0.0020000000949949026
             ],
             "type": "StaticObject"
         }

@@ -8,6 +8,9 @@
 #include "Scene.hpp"
 #include "Window.hpp"
 #include "PhysicsWorld.hpp"
+#if !defined(COWENGINE_GAME)
+#include "GameBuilder.hpp"
+#endif
 #include "objects/Object.hpp"
 #include "objects/Player.hpp"
 #include "objects/StaticObject.hpp"
@@ -79,7 +82,7 @@ void EditorUI::render(Scene *scene, Window *window, PhysicsWorld *physics, float
     }
 
     drawDockspace();
-    drawMainMenu();
+    drawMainMenu(scene);
 
     if (testingMode)
     {
@@ -116,7 +119,7 @@ void EditorUI::addLog(const std::string &text, const ImVec4 &color)
     scrollToBottom = true;
 }
 
-void EditorUI::drawMainMenu()
+void EditorUI::drawMainMenu(Scene *scene)
 {
     if (ImGui::BeginMainMenuBar())
     {
@@ -149,6 +152,44 @@ void EditorUI::drawMainMenu()
                 requestedTab = WorkspaceTab::HelpTab;
             ImGui::EndMenu();
         }
+#if !defined(COWENGINE_GAME)
+        if (ImGui::BeginMenu("Build"))
+        {
+            auto runBuild = [&](GameBuilder::Target target)
+            {
+                if (!scene)
+                {
+                    addLog("No active scene to build.", ImVec4(1.0f, 0.55f, 0.55f, 1.0f));
+                    return;
+                }
+                GameBuilder::Result result = GameBuilder::build(
+                    target,
+                    scene,
+                    [this](const std::string &line)
+                    {
+                        addLog(line, ImVec4(0.7f, 0.85f, 1.0f, 1.0f));
+                    });
+                if (result.ok)
+                    addLog(result.message, ImVec4(0.6f, 0.9f, 0.6f, 1.0f));
+                else
+                    addLog(result.message, ImVec4(1.0f, 0.55f, 0.55f, 1.0f));
+            };
+
+            const GameBuilder::Target targets[] = {
+                GameBuilder::Target::Linux,
+                GameBuilder::Target::Windows,
+                GameBuilder::Target::Web,
+            };
+
+            for (GameBuilder::Target target : targets)
+            {
+                bool available = GameBuilder::isTargetAvailable(target);
+                if (ImGui::MenuItem(GameBuilder::targetLabel(target), nullptr, false, available))
+                    runBuild(target);
+            }
+            ImGui::EndMenu();
+        }
+#endif
         ImGui::EndMainMenuBar();
     }
 }

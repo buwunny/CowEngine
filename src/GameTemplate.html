@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>CowEngine Game</title>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            background: #000;
+            color: #eee;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #main {
+            position: relative;
+            flex: 1 1 auto;
+            display: flex;
+        }
+
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            outline: none;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        #loadingOverlay {
+            background: #000;
+            z-index: 40;
+            flex-direction: column;
+        }
+
+        #startOverlay {
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 30;
+            cursor: pointer;
+            font-size: 22px;
+            color: #fff;
+        }
+
+        #startOverlay .hint {
+            font-size: 14px;
+            color: #bbb;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main">
+        <canvas id="canvas" tabindex="0"></canvas>
+        <div id="loadingOverlay" class="overlay">
+            <div>
+                <div style="font-size:24px; margin-bottom:12px;">Loading...</div>
+                <div style="font-size:13px; color:#888;">Decompressing assets</div>
+            </div>
+        </div>
+        <div id="startOverlay" class="overlay" style="display:none;">
+            <div>
+                <div>Click to play</div>
+                <div class="hint">WASD to move, mouse to look, Space to jump, Tab to release cursor</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Populated at export time by GameBuilder (base64-encoded scene JSON).
+        // GameBuilder replaces this line; null means use the scene baked into CowEngine.data.
+        var __COWENGINE_SCENE__ = null;
+
+        function resizeCanvas() {
+            var canvas = document.getElementById('canvas');
+            if (!canvas) return;
+            var ratio = window.devicePixelRatio || 1;
+            var w = canvas.clientWidth, h = canvas.clientHeight;
+            if (document.fullscreenElement === canvas) {
+                w = window.innerWidth;
+                h = window.innerHeight;
+            }
+            canvas.width = Math.max(1, Math.floor(w * ratio));
+            canvas.height = Math.max(1, Math.floor(h * ratio));
+            if (typeof Module !== 'undefined' && Module) Module.canvas = canvas;
+        }
+        document.addEventListener('DOMContentLoaded', resizeCanvas);
+        window.addEventListener('resize', resizeCanvas);
+        document.addEventListener('fullscreenchange', resizeCanvas);
+
+        var Module = {
+            noInitialRun: false,
+            canvas: (function () { return document.getElementById('canvas'); })(),
+            print: function () { console.log.apply(console, arguments); },
+            printErr: function () { console.error.apply(console, arguments); },
+            onRuntimeInitialized: function () {
+                Module.mouseSensitivity = 1.0;
+                document.getElementById('loadingOverlay').style.display = 'none';
+                var startO = document.getElementById('startOverlay');
+                startO.style.display = 'flex';
+                var canvas = document.getElementById('canvas');
+                canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+                function startGame() {
+                    startO.style.display = 'none';
+                    canvas.focus();
+                    if (canvas.requestPointerLock) canvas.requestPointerLock();
+                }
+                startO.addEventListener('click', startGame);
+                resizeCanvas();
+            }
+        };
+    </script>
+    <script async src="CowEngine.js"></script>
+</body>
+
+</html>

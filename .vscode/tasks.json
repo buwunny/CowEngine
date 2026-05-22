@@ -2,116 +2,85 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "cmake-build",
+            "label": "Configure Editor (native)",
             "type": "shell",
-            "command": "bash",
+            "command": "cmake",
             "args": [
-                "-lc",
-                "if [ ! -d build-web ]; then source ${HOME}/emsdk/emsdk_env.sh >/dev/null 2>&1 && emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release; fi && cmake --build build-web -j"
+                "--preset",
+                "editor-native"
+            ],
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "Build Editor (native)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "editor-native",
+                "-j"
+            ],
+            "problemMatcher": [
+                "$gcc"
             ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": [
-                "$gcc"
-            ]
-        },
-        {
-            "label": "emsdk: configure web",
-            "type": "shell",
-            "command": "bash",
-            "args": [
-                "-lc",
-                "source ${HOME}/emsdk/emsdk_env.sh >/dev/null 2>&1 && emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release"
-            ],
-            "group": "build",
-            "presentation": {
-                "reveal": "always"
-            }
-        },
-        {
-            "label": "cmake: build web",
-            "type": "shell",
-            "command": "bash",
-            "args": [
-                "-lc",
-                "source ${HOME}/emsdk/emsdk_env.sh >/dev/null 2>&1 && cmake --build build-web -j"
-            ],
-            "group": "build",
-            "presentation": {
-                "reveal": "always"
-            }
-        },
-        {
-            "label": "cmake: configure native",
-            "type": "shell",
-            "command": "bash",
-            "args": [
-                "-lc",
-                "mkdir -p build-native && cd build-native && \nif [ -d ../vcpkg_installed/x64-linux/share ]; then \n  extra=\"-DCMAKE_PREFIX_PATH=../vcpkg_installed/x64-linux/share\"; \nelse \n  extra=\"\"; \nfi && \nif [ -f ${HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake ]; then \n  cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake $extra ..; \nelse \n  cmake -DCMAKE_BUILD_TYPE=Release $extra ..; \nfi"
-            ],
-            "group": "build",
-            "presentation": {
-                "reveal": "always"
-            },
-            "problemMatcher": [
-                "$gcc"
-            ]
-        },
-        {
-            "label": "cmake: build native",
-            "type": "shell",
-            "command": "bash",
-            "args": [
-                "-lc",
-                "cd build-native && cmake --build . -j"
-            ],
-            "group": "build",
-            "presentation": {
-                "reveal": "always"
-            },
-            "problemMatcher": [
-                "$gcc"
-            ]
-        },
-        {
-            "label": "build-native",
-            "dependsOrder": "sequence",
             "dependsOn": [
-                "cmake: configure native",
-                "cmake: build native"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            },
-            "problemMatcher": []
+                "Configure Editor (native)"
+            ]
         },
         {
-            "label": "serve build-web",
+            "label": "Configure Editor (web)",
             "type": "shell",
-            "command": "bash",
+            "command": "emcmake",
             "args": [
-                "-lc",
-                "python3 -m http.server --directory build-web 8000"
+                "cmake",
+                "--preset",
+                "editor-web"
             ],
-            "isBackground": true,
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared"
-            },
-            "problemMatcher": []
+            "problemMatcher": [],
+            "group": "build"
         },
         {
-            "label": "build-and-serve",
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                "emsdk: configure web",
-                "cmake: build web",
-                "serve build-web"
+            "label": "Build Editor (web)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "editor-web",
+                "-j"
             ],
-            "problemMatcher": []
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": "build",
+            "dependsOn": [
+                "Configure Editor (web)"
+            ]
+        },
+        {
+            "label": "Build Editor (native + web)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "editor-native",
+                "-j"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "dependsOn": [
+                "Configure Editor (native)",
+                "Configure Editor (web)",
+                "Build Editor (web)"
+            ]
         }
     ]
 }

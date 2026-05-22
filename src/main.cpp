@@ -3,10 +3,11 @@
 int main()
 {
     Application app;
+#ifdef __EMSCRIPTEN__
+    app_set_global(&app);
+#endif
     app.init();
 #ifdef __EMSCRIPTEN__
-    // Register global app pointer for the emscripten main loop
-    app_set_global(&app);
     app_run_main_loop();
 #else
     app.runDesktop();

@@ -6,6 +6,24 @@ set(CMAKE_CXX_STANDARD 17)
 # FetchContent used to pull header-only dependencies when not available
 include(FetchContent)
 
+# Build modes:
+#   BUILD_GAME=OFF (default): build the editor (CowEngine) with full ImGui editor UI
+#   BUILD_GAME=ON           : build a standalone shippable game (no editor, assets bundled)
+option(BUILD_GAME "Build a standalone game (no editor, asset bundle)" OFF)
+if(BUILD_GAME)
+    message(STATUS "BUILD_GAME=ON — building standalone game (no editor)")
+endif()
+
+# Helper target: build both native and web game artifacts used by the embedding
+# pipeline. Invokes tools/build/build-all-games.sh from the source root. This
+# target is intentionally a convenience wrapper so CI or local devs can run:
+#   cmake --build <build-dir> --target build_all_games
+add_custom_target(build_all_games
+    COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/tools/build/build-all-games.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Build native and web game outputs (dist/game-native, dist/game-web)"
+)
+
 # vcpkg support guidance
 option(USE_VCPKG "Enable vcpkg usage (requires providing CMAKE_TOOLCHAIN_FILE at configure time)" ON)
 if(EMSCRIPTEN)
@@ -53,11 +71,20 @@ set(SOURCES
 list(APPEND SOURCES
     src/ImGuiLayer.cpp
     src/imgui_impl_emscripten.cpp
-    
+
+)
+
+# Editor-only sources: not used by the standalone game build. Anything that
+# touches the Build menu / packaging pipeline lives here.
+set(SOURCES_EDITOR_ONLY
+    src/GameBuilder.cpp
 )
 
 if(NOT EMSCRIPTEN)
     add_executable(CowEngine ${SOURCES})
+    if(NOT BUILD_GAME)
+        target_sources(CowEngine PRIVATE ${SOURCES_EDITOR_ONLY})
+    endif()
 endif()
 
 if(NOT EMSCRIPTEN)
@@ -140,13 +167,96 @@ if(NOT EMSCRIPTEN)
         BulletCollision
         LinearMath
     )
-    target_compile_definitions(CowEngine PRIVATE USE_IMGUI ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
+    if(BUILD_GAME)
+        # Standalone game: no editor, asset paths resolved relative to the exe.
+        target_compile_definitions(CowEngine PRIVATE USE_IMGUI COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
+    else()
+        target_compile_definitions(CowEngine PRIVATE USE_IMGUI ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
+    endif()
     target_include_directories(CowEngine PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet ${imguizmo_repo_SOURCE_DIR})
 
+    # Always stage assets next to the executable so the game (and editor) can
+    # be launched directly from the build directory.
     add_custom_command(TARGET CowEngine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/src/shaders $<TARGET_FILE_DIR:CowEngine>/shaders
+            ${CMAKE_SOURCE_DIR}/src/shaders $<TARGET_FILE_DIR:CowEngine>/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/scenes $<TARGET_FILE_DIR:CowEngine>/scenes
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/scripts $<TARGET_FILE_DIR:CowEngine>/scripts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/models $<TARGET_FILE_DIR:CowEngine>/models
     )
+
+    # `cmake --install` lays down a redistributable folder containing the exe
+    # and all assets it needs at runtime. No external files required.
+    install(TARGETS CowEngine RUNTIME DESTINATION .)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/shaders/ DESTINATION shaders)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/scenes/      DESTINATION scenes)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/     DESTINATION scripts)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/models/      DESTINATION models)
+    if(NOT BUILD_GAME)
+        # The editor build still needs the engine asset folder (fonts, icons,
+        # editor scripts). The standalone game build does not load these.
+        install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine_assets/ DESTINATION engine_assets)
+    endif()
+
+    # ===== Embedded game template (native editor only) =====
+    # The editor's Build menu writes a standalone game folder by extracting
+    # an embedded template. To produce that template, build a second
+    # executable from the same sources with COWENGINE_GAME defined, then run
+    # the bin2c host tool to bake the resulting files into a generated C++
+    # source linked into the editor.
+    if(NOT BUILD_GAME)
+        add_executable(CowEngineGameTpl ${SOURCES})
+        set_target_properties(CowEngineGameTpl PROPERTIES OUTPUT_NAME "CowEngineGame")
+        target_compile_definitions(CowEngineGameTpl PRIVATE
+            USE_IMGUI COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
+        target_include_directories(CowEngineGameTpl PRIVATE
+            ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include
+            ${BULLET_INCLUDE_DIRS} /usr/include/bullet ${imguizmo_repo_SOURCE_DIR})
+        target_link_libraries(CowEngineGameTpl PRIVATE
+            glad::glad glfw glm::glm OpenGL::GL nlohmann_json::nlohmann_json
+            imgui_native imguizmo_native BulletDynamics BulletCollision LinearMath)
+
+        # Stage the game template (exe + assets it needs at runtime) under the
+        # build dir. bin2c walks this directory and emits a C++ array per file.
+        set(GAME_TEMPLATE_DIR ${CMAKE_BINARY_DIR}/game_template_native)
+        add_custom_command(TARGET CowEngineGameTpl POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E rm -rf ${GAME_TEMPLATE_DIR}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${GAME_TEMPLATE_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy
+                $<TARGET_FILE:CowEngineGameTpl> ${GAME_TEMPLATE_DIR}/$<TARGET_FILE_NAME:CowEngineGameTpl>
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/src/shaders ${GAME_TEMPLATE_DIR}/shaders
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/scenes       ${GAME_TEMPLATE_DIR}/scenes
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/scripts      ${GAME_TEMPLATE_DIR}/scripts
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/models       ${GAME_TEMPLATE_DIR}/models
+            VERBATIM)
+
+        # bin2c is a tiny C++17 host tool — built with the same compiler as
+        # the editor (always native here; this whole block is gated on
+        # NOT EMSCRIPTEN).
+        add_executable(cowengine_bin2c tools/embed/bin2c.cpp)
+        set_target_properties(cowengine_bin2c PROPERTIES
+            CXX_STANDARD 17 OUTPUT_NAME "bin2c")
+
+        if(WIN32)
+            set(_native_slice "native-windows")
+        else()
+            set(_native_slice "native-linux")
+        endif()
+
+        set(EMBEDDED_CPP ${CMAKE_BINARY_DIR}/generated/EmbeddedTemplate.cpp)
+        add_custom_command(
+            OUTPUT ${EMBEDDED_CPP}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
+            COMMAND $<TARGET_FILE:cowengine_bin2c> ${EMBEDDED_CPP}
+                --slice ${_native_slice} ${GAME_TEMPLATE_DIR}
+                --slice web ${CMAKE_SOURCE_DIR}/dist/game-web
+            DEPENDS CowEngineGameTpl cowengine_bin2c
+            VERBATIM)
+        target_sources(CowEngine PRIVATE ${EMBEDDED_CPP})
+    endif()
 else()
     # Web build: only link header-only / portable libs; concrete JS/Web APIs (Ammo.js, ImGui port) handled at runtime
     # Create a minimal CowEngine target alias for common includes if needed
@@ -160,6 +270,11 @@ endif()
 if(EMSCRIPTEN)
     # Use the same source list for web builds (unified codebase)
     set(WEB_SOURCES ${SOURCES})
+
+    if(NOT BUILD_GAME)
+        list(APPEND WEB_SOURCES ${SOURCES_EDITOR_ONLY})
+        list(APPEND WEB_SOURCES src/EmbeddedTemplate_web.cpp)
+    endif()
 
 
     # Ensure Bullet is available for web builds by fetching and building it
@@ -191,7 +306,11 @@ if(EMSCRIPTEN)
     # Keep most headers/includes and definitions consistent
     target_include_directories(CowEngine_web PRIVATE ${CMAKE_SOURCE_DIR}/include ${bullet_repo_SOURCE_DIR}/src)
     target_include_directories(CowEngine_web PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(CowEngine_web PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN IMGUI_ENABLE_DOCKING)
+    if(BUILD_GAME)
+        target_compile_definitions(CowEngine_web PRIVATE COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN IMGUI_ENABLE_DOCKING)
+    else()
+        target_compile_definitions(CowEngine_web PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN IMGUI_ENABLE_DOCKING)
+    endif()
 
     # Link libraries including Bullet built for EMSCRIPTEN so we use the
     # same native physics API on web and desktop.
@@ -204,15 +323,24 @@ if(EMSCRIPTEN)
     )
 
     # Emscripten linker flags: WebGL2, memory growth and preload assets
-    set(WEB_LINK_FLAGS "-s USE_WEBGL2=1 -s ALLOW_MEMORY_GROWTH=1 -s ASSERTIONS=1 -s USE_GLFW=3")
-    # Export `callMain` so start.html can safely call Module.callMain()
-    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"callMain\"]")
+    set(WEB_LINK_FLAGS "-s USE_WEBGL2=1 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s ASSERTIONS=1 -s USE_GLFW=3")
+    # Export ccall (for Module.ccall in EM_ASM) and FS (so Module.FS is available in preRun)
+    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"FS\"]")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scenes@/scenes")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/shaders@/shaders")
-    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/help.md@/src/help.md")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scripts@/scripts")
-    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/engine_assets@/engine_assets")
+    if(NOT BUILD_GAME)
+        # Editor needs help docs and engine asset bundle (fonts/icons/scripts)
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/help.md@/src/help.md")
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/engine_assets@/engine_assets")
+
+        if(EXISTS "${CMAKE_SOURCE_DIR}/dist/game-web")
+            list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/dist/game-web@/game_template_web")
+        else()
+            message(WARNING "Web editor build: dist/game-web not found; Build menu web export will be disabled.")
+        endif()
+    endif()
 
     # Join flags into a single string and attach to target
     string(JOIN " " WEB_LINK_FLAGS_STR ${WEB_LINK_FLAGS})
@@ -257,10 +385,29 @@ if(EMSCRIPTEN)
     target_include_directories(CowEngine_web PRIVATE ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src)
 
     # Do not attempt to copy shaders at post-build for the web target (preloaded instead)
-    # Copy our custom HTML shell into the web output so Pages serves our UI as index.html
-    set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/PlaygroundTemplate.html")
+    # Copy the appropriate HTML shell into the web output so the page serves our UI as index.html
+    if(BUILD_GAME)
+        set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/GameTemplate.html")
+    else()
+        set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/EditorTemplate.html")
+    endif()
     add_custom_command(TARGET CowEngine_web POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${CUSTOM_SHELL_SOURCE} $<TARGET_FILE_DIR:CowEngine_web>/index.html
         COMMAND ${CMAKE_COMMAND} -E copy ${CUSTOM_SHELL_SOURCE} $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.html
+    )
+
+    # `cmake --install` ships the wasm + data + html shell as a single folder
+    install(FILES
+        $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.js
+        $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.wasm
+        $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.data
+        $<TARGET_FILE_DIR:CowEngine_web>/index.html
+        $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.html
+        ${CMAKE_SOURCE_DIR}/tools/build/web-instructions.txt
+        DESTINATION .
+    )
+    install(PROGRAMS
+        ${CMAKE_SOURCE_DIR}/tools/build/serve-web.sh
+        DESTINATION .
     )
 endif()
