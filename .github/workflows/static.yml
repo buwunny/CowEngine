@@ -38,15 +38,18 @@ jobs:
           emcmake cmake --preset game-web
           cmake --build --preset game-web -j
           cmake --install build/game-web
+          emcmake cmake --preset editor-web
+          cmake --build --preset editor-web -j
+          cmake --install build/editor-web
         shell: bash
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload dist/game-web artifact
+      - name: Upload dist/editor-web artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/game-web
+          path: dist/editor-web
 
       - name: Deploy to GitHub Pages
         id: deployment

@@ -62,7 +62,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "BUILD_GAME": "OFF",
-                "USE_VCPKG": "OFF"
+                "USE_VCPKG": "OFF",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/editor-web"
             }
         }
     ],
