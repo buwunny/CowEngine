@@ -24,6 +24,13 @@ public:
         Rotate,
         Scale
     };
+    enum WorkspaceTab
+    {
+        None = -1,
+        SceneTab,
+        CodeTab,
+        HelpTab
+    };
 
 public:
     EditorUI();
@@ -38,9 +45,7 @@ public:
     bool isGameViewInputEnabled() const { return gameViewInput; }
     void setGameTexture(ImTextureID textureId, float width, float height);
     void setSelection(Object *object);
-    void setRequestSwitchToCode() { requestSwitchToCode = true; }
-    void setRequestSwitchToScene() { requestSwitchToScene = true; }
-
+    void setRequestedTab(WorkspaceTab tab);
     void setVisible(bool visible) { showUI = visible; }
     bool isVisible() const { return showUI; }
 
@@ -70,6 +75,7 @@ private:
     void drawWorkspace(Scene *scene);
     void drawSceneTab(Scene *scene);
     void drawCodeTab(Scene *scene);
+    void drawHelpTab();
     void drawGizmoToolbar();
     void drawTestingOverlay();
     void drawSceneHierarchy(Scene *scene);
@@ -101,10 +107,8 @@ private:
     bool showGameView = true;
     bool testingMode = false;
     bool dockLayoutBuilt = false;
-    int activeTab = 0; // 0 = Scene, 1 = Code
-    bool requestSwitchToCode = false;
-    bool requestSwitchToScene = false;
-    bool codeEditorTabSelected = false;
+    WorkspaceTab activeTab = WorkspaceTab::HelpTab;
+    WorkspaceTab requestedTab = WorkspaceTab::None;
 
     SelectionState selection;
 
@@ -138,6 +142,8 @@ private:
     std::unique_ptr<CodeEditor> codeEditor;
     ScriptHost *scriptHostRef = nullptr;
     char newScriptName[128] = "scripts/cow/new_script.cow";
+    std::string helpMarkdown;
+    bool helpMarkdownLoaded = false;
 };
 
 #endif // EDITOR_UI_HPP

@@ -29,7 +29,7 @@
             "name": "Cube 2",
             "position": [
                 0.0,
-                1.0,
+                6.1362152099609375,
                 0.0
             ],
             "rotation": [
@@ -50,7 +50,7 @@
             "mass": 1.0,
             "name": "Cube 3",
             "position": [
-                2.0,
+                8.373291015625,
                 1.0,
                 0.0
             ],
@@ -70,15 +70,16 @@
         {
             "color": "#C88F7FFF",
             "mass": 100.0,
+            "mesh": "models/cow.obj",
             "name": "StaticObject 4",
             "position": [
-                5.0,
-                5.0,
-                5.0
+                7.817673683166504,
+                5.661375522613525,
+                3.92138671875
             ],
             "rotation": [
                 0.0,
-                -0.0,
+                -44.49415969848633,
                 0.0
             ],
             "scale": [
@@ -92,6 +93,7 @@
         {
             "color": "#7FBCE6FF",
             "mass": 0.009999999776482582,
+            "mesh": "models/cow.obj",
             "name": "StaticObject 5",
             "position": [
                 2.4404044151306152,
@@ -109,6 +111,28 @@
                 1.0
             ],
             "script": "scripts/cow/jump_on_space.cow",
+            "type": "StaticObject"
+        },
+        {
+            "color": "#FF007FFF",
+            "mass": 0.0,
+            "mesh": "models/eiffel_tower.obj",
+            "name": "StaticObject 6",
+            "position": [
+                -28.18863296508789,
+                0.0,
+                0.0
+            ],
+            "rotation": [
+                -90.0,
+                -0.0,
+                0.0
+            ],
+            "scale": [
+                0.0010000000474974513,
+                0.0010000000474974513,
+                0.0010000000474974513
+            ],
             "type": "StaticObject"
         }
     ],

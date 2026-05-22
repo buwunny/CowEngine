@@ -147,6 +147,8 @@ public:
     void setName(const std::string &value) { name = value; }
     const std::string &getScriptPath() const { return scriptPath; }
     void setScriptPath(const std::string &p) { scriptPath = p; }
+    const std::string &getMeshPath() const { return meshPath; }
+    void setMeshPath(const std::string &p) { meshPath = p; }
     const std::shared_ptr<cowscript::Script> &getScript() const { return script; }
     void setScript(std::shared_ptr<cowscript::Script> s) { script = std::move(s); }
     void getTransform(glm::vec3 &pos, glm::vec3 &rotDeg, glm::vec3 &scale) const;
@@ -212,6 +214,7 @@ protected:
     int id = 0;
     std::string name;
     std::string scriptPath;
+    std::string meshPath;
     std::shared_ptr<cowscript::Script> script;
 };
 

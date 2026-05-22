@@ -3,7 +3,6 @@
 #include "meshes/AssetManager.hpp"
 #include "script/CowScript.hpp"
 #include "script/ScriptHost.hpp"
-#include "../cow_mesh.hpp"
 
 // define static current scene pointer
 Scene *Scene::s_current = nullptr;
@@ -25,21 +24,6 @@ void Scene::populateDefault()
     objects.push_back(std::make_unique<Cube>(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 6.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.0f, 1.0f), 1.0f));
     objects.push_back(std::make_unique<Cube>(2, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 9.0f, 0.0f)), glm::vec4(0.5f, 0.0f, 0.5f, 1.0f), 1.0f));
 
-    // Shared cow mesh
-    auto &assetManager = AssetManager::instance();
-    auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
-    if (!cowMesh)
-        cowMesh = assetManager.loadStaticMeshFromArrays("cow", cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3);
-
-    int numObjects = 50;
-    for (int i = 4; i < numObjects; i++)
-    {
-        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        objects.push_back(std::make_unique<StaticObject>(cowMesh, cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 10.0f, 5.0f)), glm::vec4(r, g, b, 1.0f), 1.0f));
-    }
-
     // Add some room/floor objects
     objects.push_back(std::make_unique<Plane>(1000, 1000, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)), glm::vec4(0.60f, 0.60f, 0.60f, 1.0f), 0.0f));
 
@@ -55,7 +39,6 @@ void Scene::populateDefault()
     objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
     objects.push_back(std::make_unique<Cube>(3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 15.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 10.0f));
 
-    // Additional scene setup could be added here
 }
 
 bool Scene::loadFromJSON(const std::string &path)
@@ -235,11 +218,6 @@ bool Scene::loadFromJSON(const std::string &path)
                     std::shared_ptr<Mesh> mesh = nullptr;
                     if (!meshPath.empty())
                         mesh = am.loadStaticMeshFromOBJ(meshPath, meshName);
-                    if (!mesh)
-                    {
-                        // fallback to cow embedded mesh
-                        mesh = am.loadStaticMeshFromArrays("cow", cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3);
-                    }
 
                     if (mesh)
                     {
@@ -260,6 +238,12 @@ bool Scene::loadFromJSON(const std::string &path)
                         newObject->setName(name);
                     if (!scriptPath.empty())
                         newObject->setScriptPath(scriptPath);
+                    if (type != "Plane" && type != "Cube")
+                    {
+                        std::string meshPath = obj.value("mesh", "");
+                        if (!meshPath.empty())
+                            newObject->setMeshPath(meshPath);
+                    }
                     objects.push_back(std::move(newObject));
                 }
             }
@@ -330,7 +314,8 @@ bool Scene::saveToJSON(const std::string &path)
         else
         {
             obj["type"] = "StaticObject";
-            // If mesh present, attempt to reference by name not available here; leave blank
+            if (!o->getMeshPath().empty())
+                obj["mesh"] = o->getMeshPath();
         }
         glm::vec3 scale, translation, rotation;
         o->getTransform(translation, rotation, scale);
@@ -496,7 +481,8 @@ void Scene::renderFill(Window &window, Shader &shader)
 int Scene::loadScripts(ScriptHost &host)
 {
     int count = 0;
-    auto attach = [&](Object *o) {
+    auto attach = [&](Object *o)
+    {
         if (!o)
             return;
         const std::string &path = o->getScriptPath();
@@ -537,7 +523,8 @@ void Scene::resetScripts()
 
 void Scene::startScripts(ScriptHost &host)
 {
-    auto runStart = [&](Object *o) {
+    auto runStart = [&](Object *o)
+    {
         if (!o || !o->getScript())
             return;
         host.setSelf(o);
@@ -556,7 +543,8 @@ void Scene::updateScripts(ScriptHost &host, float dt)
 {
     std::vector<cowscript::Value> args;
     args.push_back(cowscript::Value::makeNumber(dt));
-    auto runUpdate = [&](Object *o) {
+    auto runUpdate = [&](Object *o)
+    {
         if (!o || !o->getScript())
             return;
         host.setSelf(o);

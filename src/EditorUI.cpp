@@ -15,7 +15,6 @@
 #include "CodeEditor.hpp"
 #include "script/CowScript.hpp"
 #include "script/ScriptHost.hpp"
-#include "../cow_mesh.hpp"
 
 #include <filesystem>
 
@@ -24,6 +23,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
+#include <fstream>
+#include <vector>
+#include <cmath>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -35,10 +37,9 @@
 #include <emscripten.h>
 #endif
 #include <imgui.h>
-#include <vector>
-#include <cmath>
 #define STB_IMAGE_IMPLEMENTATION
-#include "../third_party/stb_image.h"
+#include "../third_party/stb/stb_image.h"
+#include "../third_party/imgui_markdown/imgui_markdown.h" // https://github.com/enkisoftware/imgui_markdown
 
 EditorUI::EditorUI()
 {
@@ -87,7 +88,7 @@ void EditorUI::render(Scene *scene, Window *window, PhysicsWorld *physics, float
     if (showGameView)
         drawWorkspace(scene);
 
-    if (showGameView && !testingMode && activeTab == 0)
+    if (showGameView && !testingMode && activeTab == WorkspaceTab::SceneTab)
         drawGizmoToolbar();
 
     if (!testingMode)
@@ -136,9 +137,11 @@ void EditorUI::drawMainMenu()
         if (ImGui::BeginMenu("View"))
         {
             if (ImGui::MenuItem("Scene Tab"))
-                requestSwitchToScene = true;
+                requestedTab = WorkspaceTab::SceneTab;
             if (ImGui::MenuItem("Code Tab"))
-                requestSwitchToCode = true;
+                requestedTab = WorkspaceTab::CodeTab;
+            if (ImGui::MenuItem("Help Tab"))
+                requestedTab = WorkspaceTab::HelpTab;
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -370,23 +373,33 @@ void EditorUI::drawWorkspace(Scene *scene)
 
     if (ImGui::BeginTabBar("##WorkspaceTabs", ImGuiTabBarFlags_None))
     {
-        ImGuiTabItemFlags sceneFlags = requestSwitchToScene ? ImGuiTabItemFlags_SetSelected : 0;
+        ImGuiTabItemFlags sceneFlags = (requestedTab == WorkspaceTab::SceneTab) ? ImGuiTabItemFlags_SetSelected : 0;
         if (ImGui::BeginTabItem("Scene", nullptr, sceneFlags))
         {
-            activeTab = 0;
+            activeTab = WorkspaceTab::SceneTab;
+            showGameView = true;
             drawSceneTab(scene);
             ImGui::EndTabItem();
         }
-        requestSwitchToScene = false;
+        requestedTab = WorkspaceTab::None;
 
-        ImGuiTabItemFlags codeFlags = requestSwitchToCode ? ImGuiTabItemFlags_SetSelected : 0;
+        ImGuiTabItemFlags codeFlags = (requestedTab == WorkspaceTab::CodeTab) ? ImGuiTabItemFlags_SetSelected : 0;
         if (ImGui::BeginTabItem("Code", nullptr, codeFlags))
         {
-            activeTab = 1;
+            activeTab = WorkspaceTab::CodeTab;
             drawCodeTab(scene);
             ImGui::EndTabItem();
         }
-        requestSwitchToCode = false;
+        requestedTab = WorkspaceTab::None;
+
+        ImGuiTabItemFlags helpFlags = (requestedTab == WorkspaceTab::HelpTab) ? ImGuiTabItemFlags_SetSelected : 0;
+        if (ImGui::BeginTabItem("Help", nullptr, helpFlags))
+        {
+            activeTab = WorkspaceTab::HelpTab;
+            drawHelpTab();
+            ImGui::EndTabItem();
+        }
+        requestedTab = WorkspaceTab::None;
 
         ImGui::EndTabBar();
     }
@@ -464,21 +477,25 @@ void EditorUI::drawSceneTab(Scene *scene)
                 //   (X, Y, Z)  ↔  (X+180°, 180°-Y, Z+180°)
                 // Pick whichever is closer to the previously stored angles so the
                 // sequence stays continuous and doesn't flip at the ±90° singularity.
-                auto norm180 = [](float a) -> float {
-                    while (a > 180.f) a -= 360.f;
-                    while (a < -180.f) a += 360.f;
+                auto norm180 = [](float a) -> float
+                {
+                    while (a > 180.f)
+                        a -= 360.f;
+                    while (a < -180.f)
+                        a += 360.f;
                     return a;
                 };
                 float cX = norm180(rot[0] + 180.f);
                 float cY = (rot[1] >= 0.f ? 180.f : -180.f) - rot[1];
                 float cZ = norm180(rot[2] + 180.f);
-                float d1 = std::abs(norm180(rot[0] - selection.rotation.x))
-                         + std::abs(norm180(rot[1] - selection.rotation.y))
-                         + std::abs(norm180(rot[2] - selection.rotation.z));
-                float d2 = std::abs(norm180(cX - selection.rotation.x))
-                         + std::abs(norm180(cY - selection.rotation.y))
-                         + std::abs(norm180(cZ - selection.rotation.z));
-                if (d2 < d1) { rot[0] = cX; rot[1] = cY; rot[2] = cZ; }
+                float d1 = std::abs(norm180(rot[0] - selection.rotation.x)) + std::abs(norm180(rot[1] - selection.rotation.y)) + std::abs(norm180(rot[2] - selection.rotation.z));
+                float d2 = std::abs(norm180(cX - selection.rotation.x)) + std::abs(norm180(cY - selection.rotation.y)) + std::abs(norm180(cZ - selection.rotation.z));
+                if (d2 < d1)
+                {
+                    rot[0] = cX;
+                    rot[1] = cY;
+                    rot[2] = cZ;
+                }
             }
 
             selection.position = glm::vec3(pos[0], pos[1], pos[2]);
@@ -597,6 +614,32 @@ void EditorUI::drawCodeTab(Scene *scene)
 
     ImGui::Separator();
     codeEditor->render();
+}
+
+void EditorUI::drawHelpTab()
+{
+    if (!helpMarkdownLoaded)
+    {
+        std::ifstream in("src/help.md");
+        if (!in)
+        {
+            helpMarkdown = "Help file not found: help.md";
+        }
+        else
+        {
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            helpMarkdown = ss.str();
+            if (helpMarkdown.empty())
+                helpMarkdown = "(No help content available.)";
+        }
+        helpMarkdownLoaded = true;
+    }
+
+    ImGui::BeginChild("HelpRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::MarkdownConfig mdConfig{};
+    ImGui::Markdown(helpMarkdown.c_str(), helpMarkdown.length(), mdConfig);
+    ImGui::EndChild();
 }
 
 void EditorUI::drawTestingOverlay()
@@ -764,9 +807,22 @@ void EditorUI::drawInspector(Scene *scene)
             else if (codeEditor)
             {
                 codeEditor->openFile(path);
-                requestSwitchToCode = true;
+                requestedTab = WorkspaceTab::CodeTab;
             }
         }
+    }
+
+    if (std::string(selection.object->getTypeName()) == "StaticObject")
+    {
+        ImGui::Separator();
+        ImGui::TextUnformatted("Model");
+        char meshBuf[256] = {};
+        std::snprintf(meshBuf, sizeof(meshBuf), "%s", selection.object->getMeshPath().c_str());
+        if (ImGui::InputText("##meshPath", meshBuf, sizeof(meshBuf)))
+        {
+            selection.object->setMeshPath(meshBuf);
+        }
+        ImGui::TextDisabled("Reload the scene to apply.");
     }
 
     ImGui::Separator();
@@ -886,6 +942,8 @@ void EditorUI::drawRuntime(Scene *scene)
         addObjectToScene(scene, "cube");
     if (ImGui::Button("Spawn Plane"))
         addObjectToScene(scene, "plane");
+    if (ImGui::Button("Spawn Eiffel Tower"))
+        addObjectToScene(scene, "tower");
 
     ImGui::Separator();
     ImGui::TextUnformatted("Input");
@@ -919,6 +977,11 @@ void EditorUI::setGameTexture(ImTextureID textureId, float width, float height)
     gameTextureId = textureId;
     gameTextureW = width;
     gameTextureH = height;
+}
+
+void EditorUI::setRequestedTab(WorkspaceTab tab)
+{
+    requestedTab = tab;
 }
 
 void EditorUI::setSelection(Object *object)
@@ -1097,7 +1160,22 @@ void EditorUI::addObjectToScene(Scene *scene, const std::string &type)
         auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
         if (cowMesh)
         {
-            scene->addObject(std::make_unique<StaticObject>(cowMesh, cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f));
+            auto cow = std::make_unique<StaticObject>(cowMesh, cowMesh.get()->getVertices().data(), cowMesh.get()->getVertexCount(), cowMesh.get()->getIndices().data(), cowMesh.get()->getIndexCount(), cowMesh.get()->getFloatsPerVertex(), glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
+            cow.get()->setMeshPath("models/cow.obj");
+            scene->addObject(std::move(cow));
         }
     }
+    else if (type == "tower")
+    {
+        auto &assetManager = AssetManager::instance();
+        auto towerMesh = assetManager.loadStaticMeshFromOBJ("models/eiffel_tower.obj", "tower");
+        if (towerMesh)
+        {
+            auto tower = std::make_unique<StaticObject>(towerMesh, towerMesh.get()->getVertices().data(), towerMesh.get()->getVertexCount(), towerMesh.get()->getIndices().data(), towerMesh.get()->getIndexCount(), towerMesh.get()->getFloatsPerVertex(), glm::translate(glm::mat4(0.0f), glm::vec3(0.0f, 0.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 0.0f);
+            tower.get()->setTransform(glm::vec3(0.0f), glm::vec3(-90.0f, 0.0f, 0.0f), glm::vec3(0.1f));
+            tower.get()->setMeshPath("models/eiffel_tower.obj");
+            scene->addObject(std::move(tower));
+        }
+    }
+    scene->saveToJSON("scenes/scene.json");
 }

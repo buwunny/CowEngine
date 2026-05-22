@@ -16,7 +16,6 @@ extern "C" void spawnCow();
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #endif
-#include "../cow_mesh.hpp"
 
 Application::Application()
 {
@@ -141,7 +140,7 @@ void Application::tick()
         }
         lastRPressed = r;
 
-        editorUI->setRequestSwitchToScene();
+        editorUI->setRequestedTab(EditorUI::WorkspaceTab::SceneTab);
         physics->stepSimulation(delta, 10);
         scriptTime += delta;
         scriptHost->setTime(scriptTime);
@@ -251,7 +250,7 @@ void Application::tick()
     shader->use();
 
     glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)gameFbWidth / (float)gameFbHeight, 0.1f, 1000.0f);
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)gameFbWidth / (float)gameFbHeight, 0.1f, 10000.0f);
 
     shader->setViewMatrix(view);
     shader->setProjectionMatrix(projection);
@@ -309,7 +308,7 @@ void Application::checkSelection(float delta)
 
                 // Get camera matrices
                 glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
-                glm::mat4 projection = glm::perspective(glm::radians(45.0f), scaledW / scaledH, 0.1f, 1000.0f);
+                glm::mat4 projection = glm::perspective(glm::radians(45.0f), scaledW / scaledH, 0.1f, 10000.0f);
                 // Unproject screen coordinates to world ray
                 glm::vec4 rayClip(ndcX, ndcY, -1.0f, 1.0f);
                 glm::vec4 rayEye = glm::inverse(projection) * rayClip;
@@ -318,7 +317,7 @@ void Application::checkSelection(float delta)
                 glm::vec3 rayWorld = glm::normalize(glm::vec3(glm::inverse(view) * rayEye));
 
                 // Raycast into the scene
-                Object *hitObject = scene->raycast(camera->getPosition(), rayWorld, 1000.0f);
+                Object *hitObject = scene->raycast(camera->getPosition(), rayWorld, 10000.0f);
                 if (hitObject)
                 {
                     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
@@ -342,10 +341,14 @@ void Application::checkSelection(float delta)
                 }
                 else
                 {
+                    // Only deselect if the mouse click wasn't over the gizmo handles
                     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                     {
-                        scene->setSelectedObject(nullptr);
-                        editorUI->setSelection(nullptr);
+                        if (!editorUI->isMouseOverGizmo())
+                        {
+                            scene->setSelectedObject(nullptr);
+                            editorUI->setSelection(nullptr);
+                        }
                     }
                 }
             }
@@ -373,45 +376,6 @@ extern "C"
     {
         if (g_app)
             g_app->tick();
-    }
-
-    EMSCRIPTEN_KEEPALIVE
-    void spawnCow()
-    {
-        Scene *s = Scene::getCurrent();
-        if (!s)
-            return;
-        auto &assetManager = AssetManager::instance();
-        auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
-        if (!cowMesh)
-            cowMesh = assetManager.loadStaticMeshFromArrays("cow", cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3);
-
-        glm::vec3 pos(0.0f, 10.0f, 0.0f);
-        if (s->getPlayer())
-        {
-            Camera *cam = s->getPlayer()->getCamera();
-            if (cam)
-            {
-                pos = cam->getPosition() + cam->getFront() * 5.0f;
-                pos.y += 2.0f;
-            }
-        }
-
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-        glm::vec4 color = glm::vec4(r, g, b, 1.0f);
-        float mass = 1.0f;
-
-        if (cowMesh)
-        {
-            const auto &verts = cowMesh->getVertices();
-            const auto &inds = cowMesh->getIndices();
-            int stride = cowMesh->getFloatsPerVertex();
-            auto obj = std::make_unique<StaticObject>(cowMesh, verts.data(), verts.size() / stride, inds.data(), inds.size(), stride, model, color, mass);
-            s->addObject(std::move(obj));
-        }
     }
 }
 #ifdef __EMSCRIPTEN__
