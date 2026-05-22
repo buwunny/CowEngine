@@ -10,6 +10,7 @@
 #include "ImGuiLayer.hpp"
 #include "EditorUI.hpp"
 #include "InputHandler.hpp"
+#include "script/ScriptHost.hpp"
 
 class Application
 {
@@ -28,6 +29,7 @@ public:
 
 private:
     void checkSelection(float delta);
+    void reloadScripts();
 
     PhysicsWorld *physics = nullptr;
     Window *window = nullptr;
@@ -37,6 +39,8 @@ private:
     ImGuiLayer *imguiLayer = nullptr;
     EditorUI *editorUI = nullptr;
     InputHandler *editorInput = nullptr;
+    ScriptHost *scriptHost = nullptr;
+    double scriptTime = 0.0;
 
     unsigned int gameFbo = 0;
     unsigned int gameColor = 0;

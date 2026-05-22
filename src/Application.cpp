@@ -38,6 +38,7 @@ Application::~Application()
     delete imguiLayer;
     delete editorUI;
     delete editorInput;
+    delete scriptHost;
 }
 
 void Application::init()
@@ -52,6 +53,8 @@ void Application::init()
     scene->addRigidBodiesToWorld(*physics);
 
     scene->addPlayer(std::make_unique<Player>(camera, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 10.0f))), window, *physics);
+    if (scene->getPlayer())
+        scene->getPlayer()->setScriptPath("scripts/cow/shoot_cow.cow");
 
     // Ensure camera is positioned to match the player's initial transform on web builds
     camera->setPosition(glm::vec3(0.0f, 3.0f, 10.0f));
@@ -62,6 +65,14 @@ void Application::init()
     editorUI = new EditorUI();
     editorUI->setCamera(camera);
     editorInput = new InputHandler(camera);
+
+    scriptHost = new ScriptHost();
+    scriptHost->setContext(scene, window);
+    scriptHost->setLogger([this](const std::string &line)
+                          {
+        if (editorUI)
+            editorUI->addLog("[cow] " + line, ImVec4(0.7f, 0.95f, 0.7f, 1.0f)); });
+    editorUI->setScriptHost(scriptHost);
 
 #ifdef __EMSCRIPTEN__
     lastFrame = emscripten_get_now() / 1000.0;
@@ -81,16 +92,6 @@ static double getTimeSeconds()
 
 void Application::tick()
 {
-    // Edge detect reload (R)
-    bool r = window->isKeyPressed(GLFW_KEY_R);
-    if (r && !lastRPressed)
-    {
-        editorUI->setSelection(nullptr);
-        scene->setSelectedObject(nullptr);
-        scene->forceReload();
-    }
-    lastRPressed = r;
-
     // Hot-reload
     scene->checkReload();
 
@@ -110,11 +111,16 @@ void Application::tick()
     bool testingMode = editorUI && editorUI->isTestingMode();
     if (testingMode != lastTestingMode)
     {
-        if (!testingMode)
+        if (testingMode)
+        {
+            reloadScripts();
+        }
+        else
         {
             editorUI->setSelection(nullptr);
             scene->setSelectedObject(nullptr);
             scene->forceReload();
+            scene->resetScripts();
             // Pointer-lock during testing can cause key-up events to be missed, leaving
             // ImGui's key state stale. Clear it so editor shortcuts work immediately.
             ImGui::GetIO().ClearInputKeys();
@@ -123,7 +129,25 @@ void Application::tick()
         lastTestingMode = testingMode;
     }
     if (testingMode)
+    {
+        // Edge detect reload (R)
+        bool r = window->isKeyPressed(GLFW_KEY_R);
+        if (r && !lastRPressed)
+        {
+            editorUI->setSelection(nullptr);
+            scene->setSelectedObject(nullptr);
+            scene->forceReload();
+            reloadScripts();
+        }
+        lastRPressed = r;
+
+        editorUI->setRequestSwitchToScene();
         physics->stepSimulation(delta, 10);
+        scriptTime += delta;
+        scriptHost->setTime(scriptTime);
+        scriptHost->setDelta(delta);
+        scene->updateScripts(*scriptHost, delta);
+    }
 
     ImGuiIO &io = ImGui::GetIO();
     bool uiCapturing = io.WantCaptureMouse || io.WantCaptureKeyboard;
@@ -327,6 +351,16 @@ void Application::checkSelection(float delta)
             }
         }
     }
+}
+
+void Application::reloadScripts()
+{
+    scriptTime = 0.0;
+    scene->resetScripts();
+    scene->loadScripts(*scriptHost);
+    scriptHost->setTime(0.0);
+    scriptHost->setDelta(0.0);
+    scene->startScripts(*scriptHost);
 }
 
 // Expose a web-friendly tick function when building with Emscripten

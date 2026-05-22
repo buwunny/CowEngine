@@ -10,6 +10,8 @@
 #include "meshes/AssetManager.hpp"
 #include "PhysicsWorld.hpp"
 
+class ScriptHost;
+
 #include <vector>
 #include <memory>
 #include <filesystem>
@@ -91,6 +93,19 @@ public:
         if (player)
             player->update();
     }
+
+    // Compile and attach scripts to every object that has a scriptPath. Already-compiled
+    // scripts are left as-is. Returns the number of scripts attached.
+    int loadScripts(ScriptHost &host);
+
+    // Reset script state (drop compiled scripts) and force a recompile on next loadScripts.
+    void resetScripts();
+
+    // Invoke `on start` on every script. Should be called once when entering testing mode.
+    void startScripts(ScriptHost &host);
+
+    // Invoke `on update(dt)` on every script. Should be called per testing-mode tick.
+    void updateScripts(ScriptHost &host, float dt);
 
     void render(Window &window, Shader &shader);
 

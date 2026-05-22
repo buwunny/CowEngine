@@ -12,7 +12,12 @@
 #include "objects/Player.hpp"
 #include "objects/StaticObject.hpp"
 #include "meshes/AssetManager.hpp"
+#include "CodeEditor.hpp"
+#include "script/CowScript.hpp"
+#include "script/ScriptHost.hpp"
 #include "../cow_mesh.hpp"
+
+#include <filesystem>
 
 #include <algorithm>
 #include <cctype>
@@ -38,7 +43,12 @@
 EditorUI::EditorUI()
 {
     addLog("Editor UI ready. Type 'help' for commands.");
+    codeEditor = std::make_unique<CodeEditor>();
+    codeEditor->setLogger([this](const std::string &line)
+                          { addLog(line, ImVec4(0.7f, 0.85f, 1.0f, 1.0f)); });
 }
+
+EditorUI::~EditorUI() = default;
 
 void EditorUI::render(Scene *scene, Window *window, PhysicsWorld *physics, float deltaSeconds, float fps)
 {
@@ -75,9 +85,9 @@ void EditorUI::render(Scene *scene, Window *window, PhysicsWorld *physics, float
     }
 
     if (showGameView)
-        drawGameView(scene);
+        drawWorkspace(scene);
 
-    if (showGameView && !testingMode)
+    if (showGameView && !testingMode && activeTab == 0)
         drawGizmoToolbar();
 
     if (!testingMode)
@@ -115,12 +125,20 @@ void EditorUI::drawMainMenu()
         }
         if (ImGui::BeginMenu("Windows"))
         {
-            ImGui::MenuItem("Game View", nullptr, &showGameView);
+            ImGui::MenuItem("Workspace", nullptr, &showGameView);
             ImGui::MenuItem("Scene Hierarchy", nullptr, &showHierarchy);
             ImGui::MenuItem("Inspector", nullptr, &showInspector);
             ImGui::MenuItem("Debug Console", nullptr, &showConsole);
             ImGui::MenuItem("Stats", nullptr, &showStats);
             ImGui::MenuItem("Runtime", nullptr, &showRuntime);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("View"))
+        {
+            if (ImGui::MenuItem("Scene Tab"))
+                requestSwitchToScene = true;
+            if (ImGui::MenuItem("Code Tab"))
+                requestSwitchToCode = true;
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -159,7 +177,7 @@ void EditorUI::drawDockspace()
 
         ImGuiID dockRightBottom = ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Down, 0.45f, nullptr, &dockRight);
 
-        ImGui::DockBuilderDockWindow("Game View", dockMain);
+        ImGui::DockBuilderDockWindow("Workspace", dockMain);
         ImGui::DockBuilderDockWindow("Scene Hierarchy", dockLeft);
         ImGui::DockBuilderDockWindow("Inspector", dockRight);
         ImGui::DockBuilderDockWindow("Runtime", dockRightBottom);
@@ -343,20 +361,47 @@ void EditorUI::drawGizmoToolbar()
     ImGui::PopStyleVar(3);
 }
 
-void EditorUI::drawGameView(Scene *scene)
+void EditorUI::drawWorkspace(Scene *scene)
 {
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar;
     ImGui::SetNextWindowSize(ImVec2(900.0f, 600.0f), ImGuiCond_FirstUseEver);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06f, 0.06f, 0.08f, 0.05f));
-    ImGui::Begin("Game View", &showGameView, flags);
+    ImGui::Begin("Workspace", &showGameView, flags);
 
-    ImVec2 windowPos = ImGui::GetWindowPos();
-    ImVec2 contentMin = ImGui::GetWindowContentRegionMin();
-    ImVec2 contentMax = ImGui::GetWindowContentRegionMax();
-    ImVec2 contentSize = ImVec2(contentMax.x - contentMin.x, contentMax.y - contentMin.y);
+    if (ImGui::BeginTabBar("##WorkspaceTabs", ImGuiTabBarFlags_None))
+    {
+        ImGuiTabItemFlags sceneFlags = requestSwitchToScene ? ImGuiTabItemFlags_SetSelected : 0;
+        if (ImGui::BeginTabItem("Scene", nullptr, sceneFlags))
+        {
+            activeTab = 0;
+            drawSceneTab(scene);
+            ImGui::EndTabItem();
+        }
+        requestSwitchToScene = false;
 
-    gameViewportX = windowPos.x + contentMin.x;
-    gameViewportY = windowPos.y + contentMin.y;
+        ImGuiTabItemFlags codeFlags = requestSwitchToCode ? ImGuiTabItemFlags_SetSelected : 0;
+        if (ImGui::BeginTabItem("Code", nullptr, codeFlags))
+        {
+            activeTab = 1;
+            drawCodeTab(scene);
+            ImGui::EndTabItem();
+        }
+        requestSwitchToCode = false;
+
+        ImGui::EndTabBar();
+    }
+
+    ImGui::End();
+    ImGui::PopStyleColor();
+}
+
+void EditorUI::drawSceneTab(Scene *scene)
+{
+    ImVec2 cursorScreen = ImGui::GetCursorScreenPos();
+    ImVec2 contentSize = ImGui::GetContentRegionAvail();
+
+    gameViewportX = cursorScreen.x;
+    gameViewportY = cursorScreen.y;
     gameViewportW = contentSize.x;
     gameViewportH = contentSize.y;
     hasGameViewport = (gameViewportW > 1.0f && gameViewportH > 1.0f);
@@ -372,7 +417,7 @@ void EditorUI::drawGameView(Scene *scene)
         ImGui::TextUnformatted("Game View (render target not ready)");
     }
 
-    // Gizmo overlay — only in editor mode with a selection and a camera
+    // Gizmo overlay only in editor mode with a selection and a camera
     if (!testingMode && selection.object && cameraRef && hasGameViewport)
     {
         if (!selection.hasCache)
@@ -388,13 +433,13 @@ void EditorUI::drawGameView(Scene *scene)
         memcpy(viewF, glm::value_ptr(view), sizeof(viewF));
         memcpy(projF, glm::value_ptr(proj), sizeof(projF));
 
-        // Rebuild model matrix from cached euler angles so gizmo reflects inspector values
-        glm::mat4 modelMat = glm::translate(glm::mat4(1.0f), selection.position);
-        modelMat = glm::rotate(modelMat, glm::radians(selection.rotation.y), glm::vec3(0, 1, 0));
-        modelMat = glm::rotate(modelMat, glm::radians(selection.rotation.x), glm::vec3(1, 0, 0));
-        modelMat = glm::rotate(modelMat, glm::radians(selection.rotation.z), glm::vec3(0, 0, 1));
-        modelMat = glm::scale(modelMat, selection.scale);
-        memcpy(modelF, glm::value_ptr(modelMat), sizeof(modelF));
+        // Rebuild model matrix using the same Rz*Ry*Rx convention as setTransform / ImGuizmo
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), selection.position);
+        model = glm::rotate(model, glm::radians(selection.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+        model = glm::rotate(model, glm::radians(selection.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+        model = glm::rotate(model, glm::radians(selection.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+        model = glm::scale(model, selection.scale);
+        memcpy(modelF, glm::value_ptr(model), sizeof(modelF));
 
         ImGuizmo::SetOrthographic(false);
         ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
@@ -411,6 +456,31 @@ void EditorUI::drawGameView(Scene *scene)
         {
             float pos[3], rot[3], sc[3];
             ImGuizmo::DecomposeMatrixToComponents(modelF, pos, rot, sc);
+
+            if (gizmoOp == GizmoOp::Rotate)
+            {
+                // DecomposeMatrixToComponents always returns Y in [-90°, 90°].
+                // For Rz*Ry*Rx, every rotation has a complementary representation:
+                //   (X, Y, Z)  ↔  (X+180°, 180°-Y, Z+180°)
+                // Pick whichever is closer to the previously stored angles so the
+                // sequence stays continuous and doesn't flip at the ±90° singularity.
+                auto norm180 = [](float a) -> float {
+                    while (a > 180.f) a -= 360.f;
+                    while (a < -180.f) a += 360.f;
+                    return a;
+                };
+                float cX = norm180(rot[0] + 180.f);
+                float cY = (rot[1] >= 0.f ? 180.f : -180.f) - rot[1];
+                float cZ = norm180(rot[2] + 180.f);
+                float d1 = std::abs(norm180(rot[0] - selection.rotation.x))
+                         + std::abs(norm180(rot[1] - selection.rotation.y))
+                         + std::abs(norm180(rot[2] - selection.rotation.z));
+                float d2 = std::abs(norm180(cX - selection.rotation.x))
+                         + std::abs(norm180(cY - selection.rotation.y))
+                         + std::abs(norm180(cZ - selection.rotation.z));
+                if (d2 < d1) { rot[0] = cX; rot[1] = cY; rot[2] = cZ; }
+            }
+
             selection.position = glm::vec3(pos[0], pos[1], pos[2]);
             selection.rotation = glm::vec3(rot[0], rot[1], rot[2]);
             selection.scale = glm::vec3(sc[0], sc[1], sc[2]);
@@ -452,9 +522,81 @@ void EditorUI::drawGameView(Scene *scene)
         if (windowRef)
             windowRef->setCursorDisabled(false);
     }
+}
 
-    ImGui::End();
-    ImGui::PopStyleColor();
+void EditorUI::drawCodeTab(Scene *scene)
+{
+    (void)scene;
+    if (!codeEditor)
+        return;
+
+    // Toolbar across the top of the code tab.
+    if (ImGui::Button("New"))
+    {
+        ImGui::OpenPopup("##NewScript");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Open from selection"))
+    {
+        if (selection.object && !selection.object->getScriptPath().empty())
+        {
+            codeEditor->openFile(selection.object->getScriptPath());
+        }
+        else
+        {
+            addLog("Select an object with a script first (or attach one in the Inspector).",
+                   ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Save"))
+    {
+        codeEditor->saveActive();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Apply (recompile)"))
+    {
+        if (scene && scriptHostRef && codeEditor->hasActiveBuffer())
+        {
+            codeEditor->saveActive();
+            scene->resetScripts();
+            int n = scene->loadScripts(*scriptHostRef);
+            addLog("Recompiled " + std::to_string(n) + " script(s).",
+                   ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Ctrl+S to save");
+
+    if (ImGui::BeginPopup("##NewScript"))
+    {
+        ImGui::Text("Path for new .cow file:");
+        ImGui::SetNextItemWidth(360.0f);
+        ImGui::InputText("##newScriptPath", newScriptName, sizeof(newScriptName));
+        if (ImGui::Button("Create"))
+        {
+            // Make sure the directory exists.
+            try
+            {
+                std::filesystem::path p(newScriptName);
+                if (p.has_parent_path())
+                    std::filesystem::create_directories(p.parent_path());
+            }
+            catch (...)
+            {
+            }
+            codeEditor->openFile(newScriptName);
+            codeEditor->saveActive();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+
+    ImGui::Separator();
+    codeEditor->render();
 }
 
 void EditorUI::drawTestingOverlay()
@@ -597,6 +739,34 @@ void EditorUI::drawInspector(Scene *scene)
             selection.object->setMass(mass);
         }
         ImGui::Text("Velocity: %.2f %.2f %.2f", v.getX(), v.getY(), v.getZ());
+    }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Script");
+    {
+        char scriptBuf[256] = {};
+        std::snprintf(scriptBuf, sizeof(scriptBuf), "%s", selection.object->getScriptPath().c_str());
+        if (ImGui::InputText("##scriptPath", scriptBuf, sizeof(scriptBuf)))
+        {
+            selection.object->setScriptPath(scriptBuf);
+            // Drop any previously compiled script so the new path takes effect.
+            selection.object->setScript(nullptr);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Edit"))
+        {
+            std::string path = selection.object->getScriptPath();
+            if (path.empty())
+            {
+                addLog("Set a script path first (e.g. scripts/cow/spin.cow).",
+                       ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
+            }
+            else if (codeEditor)
+            {
+                codeEditor->openFile(path);
+                requestSwitchToCode = true;
+            }
+        }
     }
 
     ImGui::Separator();

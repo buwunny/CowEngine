@@ -44,6 +44,9 @@ set(SOURCES
     src/Window.cpp
     src/Application.cpp
     src/EditorUI.cpp
+    src/CodeEditor.cpp
+    src/script/CowScript.cpp
+    src/script/ScriptHost.cpp
 )
 
 # ImGui integration sources (present for both native and web builds)
@@ -208,6 +211,7 @@ if(EMSCRIPTEN)
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/shaders@/shaders")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/icons/png@/icons/png")
+    list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scripts/cow@/scripts/cow")
 
     # Join flags into a single string and attach to target
     string(JOIN " " WEB_LINK_FLAGS_STR ${WEB_LINK_FLAGS})

@@ -10,6 +10,36 @@
 namespace
 {
     int g_nextObjectId = 1;
+
+    double wrapAngleDeg(double angle)
+    {
+        double a = std::fmod(angle, 360.0);
+        if (a > 180.0)
+            a -= 360.0;
+        else if (a < -180.0)
+            a += 360.0;
+        return a;
+    }
+
+    glm::vec3 normalizeEuler(const glm::vec3 &deg)
+    {
+        return glm::vec3(
+            static_cast<float>(wrapAngleDeg(deg.x)),
+            static_cast<float>(wrapAngleDeg(deg.y)),
+            static_cast<float>(wrapAngleDeg(deg.z)));
+    }
+
+    glm::vec3 chooseClosestEuler(const glm::vec3 &currentDeg, const glm::vec3 &incomingDeg)
+    {
+        // Two equivalent Euler triplets for ZYX (Rz*Ry*Rx): (x,y,z) and (x+180, 180-y, z+180)
+        glm::vec3 a = normalizeEuler(incomingDeg);
+        glm::vec3 b = normalizeEuler(glm::vec3(incomingDeg.x + 180.0f, 180.0f - incomingDeg.y, incomingDeg.z + 180.0f));
+
+        glm::vec3 cur = normalizeEuler(currentDeg);
+        float distA = std::abs(a.x - cur.x) + std::abs(a.y - cur.y) + std::abs(a.z - cur.z);
+        float distB = std::abs(b.x - cur.x) + std::abs(b.y - cur.y) + std::abs(b.z - cur.z);
+        return (distB < distA) ? b : a;
+    }
 }
 
 Object::Object()
@@ -27,17 +57,20 @@ void Object::getTransform(glm::vec3 &pos, glm::vec3 &rotDeg, glm::vec3 &scale) c
 
 void Object::setTransform(const glm::vec3 &pos, const glm::vec3 &rotDeg, const glm::vec3 &scale)
 {
+    // glm::vec3 stableRot = chooseClosestEuler(glm::vec3(this->rotation), rotDeg);
+    // Rotation order Rz*Ry*Rx matches ImGuizmo's DecomposeMatrixToComponents convention
     glm::mat4 m = glm::translate(glm::mat4(1.0f), pos);
+    m = glm::rotate(m, glm::radians(rotDeg.z), glm::vec3(0.0f, 0.0f, 1.0f));
     m = glm::rotate(m, glm::radians(rotDeg.y), glm::vec3(0.0f, 1.0f, 0.0f));
     m = glm::rotate(m, glm::radians(rotDeg.x), glm::vec3(1.0f, 0.0f, 0.0f));
-    m = glm::rotate(m, glm::radians(rotDeg.z), glm::vec3(0.0f, 0.0f, 1.0f));
     m = glm::scale(m, scale);
 
+    setInitialModel(m);
+    // Override the extraction with the exact values we were given — avoids floating-point
+    // round-trip errors and gimbal-lock ambiguity in setInitialModel's asin/atan path.
     this->translation = glm::dvec3(pos);
     this->rotation = glm::dvec3(rotDeg);
     this->scale = glm::dvec3(scale);
-
-    setInitialModel(m);
 
     if (rigidBody)
     {

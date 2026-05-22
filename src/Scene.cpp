@@ -1,6 +1,8 @@
 #include "Scene.hpp"
 #include <iostream>
 #include "meshes/AssetManager.hpp"
+#include "script/CowScript.hpp"
+#include "script/ScriptHost.hpp"
 #include "../cow_mesh.hpp"
 
 // define static current scene pointer
@@ -159,10 +161,10 @@ bool Scene::loadFromJSON(const std::string &path)
                     scl = getVec3(obj, "scale", glm::vec3(1.0f));
 
                     model = glm::translate(glm::mat4(1.0f), pos);
-                    // Apply yaw (y), pitch (x), roll (z) in that order
+                    // Rz*Ry*Rx order — matches ImGuizmo and setTransform
+                    model = glm::rotate(model, glm::radians(rot.z), glm::vec3(0.0f, 0.0f, 1.0f));
                     model = glm::rotate(model, glm::radians(rot.y), glm::vec3(0.0f, 1.0f, 0.0f));
                     model = glm::rotate(model, glm::radians(rot.x), glm::vec3(1.0f, 0.0f, 0.0f));
-                    model = glm::rotate(model, glm::radians(rot.z), glm::vec3(0.0f, 0.0f, 1.0f));
                     model = glm::scale(model, scl);
                 }
 
@@ -210,6 +212,7 @@ bool Scene::loadFromJSON(const std::string &path)
 
                 float mass = obj.value("mass", 0.0f);
                 std::string name = obj.value("name", "");
+                std::string scriptPath = obj.value("script", "");
 
                 std::unique_ptr<Object> newObject;
                 if (type == "Plane")
@@ -255,6 +258,8 @@ bool Scene::loadFromJSON(const std::string &path)
                     newObject->setMass(mass);
                     if (!name.empty())
                         newObject->setName(name);
+                    if (!scriptPath.empty())
+                        newObject->setScriptPath(scriptPath);
                     objects.push_back(std::move(newObject));
                 }
             }
@@ -336,6 +341,8 @@ bool Scene::saveToJSON(const std::string &path)
         obj["color"] = o->getColorString();
         obj["name"] = o->getName();
         obj["mass"] = o->getMass();
+        if (!o->getScriptPath().empty())
+            obj["script"] = o->getScriptPath();
 
         j["objects"].push_back(obj);
     }
@@ -484,4 +491,82 @@ void Scene::renderFill(Window &window, Shader &shader)
     {
         obj->renderFill(window, shader);
     }
+}
+
+int Scene::loadScripts(ScriptHost &host)
+{
+    int count = 0;
+    auto attach = [&](Object *o) {
+        if (!o)
+            return;
+        const std::string &path = o->getScriptPath();
+        if (path.empty() || o->getScript())
+            return;
+        std::string foundPath;
+        std::string source = cowscript::readScriptFile(path, &foundPath);
+        if (source.empty())
+        {
+            std::cerr << "Scene: failed to read script '" << path << "'" << std::endl;
+            return;
+        }
+        auto script = std::make_shared<cowscript::Script>();
+        host.bindBuiltins(*script);
+        std::string err = script->compile(source);
+        if (!err.empty())
+        {
+            std::cerr << "Scene: script compile error in '" << path << "': " << err << std::endl;
+            return;
+        }
+        o->setScript(script);
+        ++count;
+    };
+    if (player)
+        attach(player.get());
+    for (auto &o : objects)
+        attach(o.get());
+    return count;
+}
+
+void Scene::resetScripts()
+{
+    for (auto &o : objects)
+        o->setScript(nullptr);
+    if (player)
+        player->setScript(nullptr);
+}
+
+void Scene::startScripts(ScriptHost &host)
+{
+    auto runStart = [&](Object *o) {
+        if (!o || !o->getScript())
+            return;
+        host.setSelf(o);
+        std::string err = o->getScript()->callEvent("start", {});
+        if (!err.empty())
+            std::cerr << "Scene: '" << o->getScriptPath() << "' on start: " << err << std::endl;
+    };
+    if (player)
+        runStart(player.get());
+    for (auto &o : objects)
+        runStart(o.get());
+    host.setSelf(nullptr);
+}
+
+void Scene::updateScripts(ScriptHost &host, float dt)
+{
+    std::vector<cowscript::Value> args;
+    args.push_back(cowscript::Value::makeNumber(dt));
+    auto runUpdate = [&](Object *o) {
+        if (!o || !o->getScript())
+            return;
+        host.setSelf(o);
+        std::string err = o->getScript()->callEvent("update", args);
+        if (!err.empty())
+            std::cerr << "Scene: '" << o->getScriptPath() << "' on update: " << err << std::endl;
+    };
+    if (player)
+        runUpdate(player.get());
+    for (auto &o : objects)
+        runUpdate(o.get());
+    host.setSelf(nullptr);
 }

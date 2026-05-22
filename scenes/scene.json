@@ -1,9 +1,10 @@
 {
     "objects": [
         {
-            "type": "Plane",
+            "color": "#999999FF",
             "length": 1000.0,
-            "width": 1000.0,
+            "mass": 0.0,
+            "name": "Plane 1",
             "position": [
                 0.0,
                 0.0,
@@ -11,7 +12,7 @@
             ],
             "rotation": [
                 0.0,
-                0.0,
+                -0.0,
                 0.0
             ],
             "scale": [
@@ -19,17 +20,13 @@
                 1.0,
                 1.0
             ],
-            "color": [
-                0.6,
-                0.6,
-                0.6,
-                1.0
-            ],
-            "mass": 0.0
+            "type": "Plane",
+            "width": 1000.0
         },
         {
-            "type": "Cube",
-            "size": 1.0,
+            "color": "#FF3333FF",
+            "mass": 1.0,
+            "name": "Cube 2",
             "position": [
                 0.0,
                 1.0,
@@ -37,7 +34,7 @@
             ],
             "rotation": [
                 0.0,
-                0.0,
+                -0.0,
                 0.0
             ],
             "scale": [
@@ -45,12 +42,13 @@
                 5.0,
                 5.0
             ],
-            "color": "#FF3333",
-            "mass": 1.0
+            "size": 1,
+            "type": "Cube"
         },
         {
-            "type": "Cube",
-            "size": 2,
+            "color": "#33FF33FF",
+            "mass": 1.0,
+            "name": "Cube 3",
             "position": [
                 2.0,
                 1.0,
@@ -58,21 +56,21 @@
             ],
             "rotation": [
                 0.0,
-                15.0,
+                14.999990463256836,
                 0.0
             ],
             "scale": [
+                0.9999995827674866,
                 1.0,
-                1.0,
-                1.0
+                0.9999995827674866
             ],
-            "color": "#33FF33",
-            "mass": 1.0
+            "size": 2,
+            "type": "Cube"
         },
         {
-            "type": "StaticObject",
-            "mesh": "models/cow.obj",
-            "mesh_name": "cow",
+            "color": "#C88F7FFF",
+            "mass": 100.0,
+            "name": "StaticObject 4",
             "position": [
                 5.0,
                 5.0,
@@ -80,7 +78,7 @@
             ],
             "rotation": [
                 0.0,
-                0.0,
+                -0.0,
                 0.0
             ],
             "scale": [
@@ -88,21 +86,21 @@
                 1.0,
                 1.0
             ],
-            "color": "#C88F7F",
-            "mass": 100.0
+            "script": "scripts/cow/spin.cow",
+            "type": "StaticObject"
         },
         {
-            "type": "StaticObject",
-            "mesh": "models/cow.obj",
-            "mesh_name": "cow2",
+            "color": "#7FBCE6FF",
+            "mass": 0.009999999776482582,
+            "name": "StaticObject 5",
             "position": [
-                -5.0,
-                10.0,
+                2.4404044151306152,
+                3.9000000953674316,
                 -5.0
             ],
             "rotation": [
-                45.0,
                 0.0,
+                11.677236557006836,
                 0.0
             ],
             "scale": [
@@ -110,8 +108,9 @@
                 1.0,
                 1.0
             ],
-            "color": "#7FBCE6",
-            "mass": 0.01
+            "script": "scripts/cow/jump_on_space.cow",
+            "type": "StaticObject"
         }
-    ]
+    ],
+    "scenePath": "scenes/scene.json"
 }

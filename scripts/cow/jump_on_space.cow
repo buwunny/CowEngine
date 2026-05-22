@@ -1,0 +1,14 @@
+// jump_on_space.cow - press SPACE while testing to give the object a vertical impulse.
+// Also recolors the object on press for a quick visual confirmation.
+
+let was_down = false
+
+on update(dt) {
+    let down = key("space")
+    if (down and not was_down) {
+        self_apply_impulse(0, 0.1, 0)
+        self_set_color(random(), random(), random(), 1)
+        print("boop!")
+    }
+    was_down = down
+}

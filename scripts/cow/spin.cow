@@ -1,0 +1,20 @@
+// spin.cow - rotates the attached object around the Y axis and bobs it up and down.
+// Built-in callbacks: on start() runs once when Testing Mode begins; on update(dt)
+// runs every frame while testing.
+
+let base_y = 0
+let speed = 60   // degrees per second
+
+on start() {
+    base_y = self_y()
+    print("spin starting at y=", base_y)
+}
+
+on update(dt) {
+    let t = time()
+    let yaw = self_ry() + speed * dt
+    self_set_rot(self_rx(), yaw, self_rz())
+
+    let y = base_y + sin(t * 2) * 1.5
+    self_set_pos(self_x(), y, self_z())
+}

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 #include <imgui.h>
 #include <glm/glm.hpp>
 
@@ -11,6 +12,8 @@ class Window;
 class PhysicsWorld;
 class Object;
 class Camera;
+class CodeEditor;
+class ScriptHost;
 
 class EditorUI
 {
@@ -24,14 +27,19 @@ public:
 
 public:
     EditorUI();
+    ~EditorUI();
 
     void render(Scene *scene, Window *window, PhysicsWorld *physics, float deltaSeconds, float fps);
+    void setScriptHost(ScriptHost *host) { scriptHostRef = host; }
+    CodeEditor *getCodeEditor() { return codeEditor.get(); }
     void addLog(const std::string &text, const ImVec4 &color = ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
     bool getGameViewport(float &x, float &y, float &w, float &h, float &scaleX, float &scaleY) const;
     bool isTestingMode() const { return testingMode; }
     bool isGameViewInputEnabled() const { return gameViewInput; }
     void setGameTexture(ImTextureID textureId, float width, float height);
     void setSelection(Object *object);
+    void setRequestSwitchToCode() { requestSwitchToCode = true; }
+    void setRequestSwitchToScene() { requestSwitchToScene = true; }
 
     void setVisible(bool visible) { showUI = visible; }
     bool isVisible() const { return showUI; }
@@ -59,7 +67,9 @@ private:
 
     void drawMainMenu();
     void drawDockspace();
-    void drawGameView(Scene *scene);
+    void drawWorkspace(Scene *scene);
+    void drawSceneTab(Scene *scene);
+    void drawCodeTab(Scene *scene);
     void drawGizmoToolbar();
     void drawTestingOverlay();
     void drawSceneHierarchy(Scene *scene);
@@ -91,6 +101,10 @@ private:
     bool showGameView = true;
     bool testingMode = false;
     bool dockLayoutBuilt = false;
+    int activeTab = 0; // 0 = Scene, 1 = Code
+    bool requestSwitchToCode = false;
+    bool requestSwitchToScene = false;
+    bool codeEditorTabSelected = false;
 
     SelectionState selection;
 
@@ -120,6 +134,10 @@ private:
     ImTextureID gameTextureId = 0;
     float gameTextureW = 0.0f;
     float gameTextureH = 0.0f;
+
+    std::unique_ptr<CodeEditor> codeEditor;
+    ScriptHost *scriptHostRef = nullptr;
+    char newScriptName[128] = "scripts/cow/new_script.cow";
 };
 
 #endif // EDITOR_UI_HPP

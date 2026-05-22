@@ -1,0 +1,28 @@
+// shoot_cow.cow - attach to the Player. Press C while testing to launch a cow
+// in the direction the camera is facing.
+//
+// Demonstrates the component API: camera(), spawn_cow() returns an object
+// handle, and `.rigidbody.vx` reads/writes the rigidbody's linear velocity.
+
+let was_down = false
+let speed = 100
+
+on update(dt) {
+    let down = key("c")
+    if (down and not was_down) {
+        let cam = camera()
+        let ox = cam.x + cam.fx * 2
+        let oy = cam.y + cam.fy * 2
+        let oz = cam.z + cam.fz * 2
+
+        let cow = spawn_cow(ox, oy, oz)
+        cow.sx = 0.1
+        cow.sy = 0.1
+        cow.sz = 0.1
+        let rb = cow.rigidbody
+        rb.vx = cam.fx * speed
+        rb.vy = cam.fy * speed
+        rb.vz = cam.fz * speed
+    }
+    was_down = down
+}

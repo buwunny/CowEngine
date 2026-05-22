@@ -1,8 +1,5 @@
 #include "objects/Player.hpp"
-#include "meshes/AssetManager.hpp"
 #include "Scene.hpp"
-#include "../cow_mesh.hpp"
-#include <cstdlib>
 #include <glm/gtc/matrix_transform.hpp>
 
 Player::Player(Camera *camera, glm::mat4 model)
@@ -59,51 +56,6 @@ void Player::processInput(Window *window, float deltaTime, PhysicsWorld *physics
     // If cursor is unlocked (normal), don't process movement or mouse control
     if (!window->isCursorDisabled())
         return;
-
-    // Spawn small cow projectile on C key (edge detect)
-    {
-        bool c = window->isKeyPressed(GLFW_KEY_C);
-        if (c && !lastCPressed)
-        {
-            Scene *sc = Scene::getCurrent();
-            if (sc)
-            {
-                auto &assetManager = AssetManager::instance();
-                auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
-                if (!cowMesh)
-                    cowMesh = assetManager.loadStaticMeshFromArrays("cow", cow_mesh_vertices, cow_mesh_vertex_count, cow_mesh_indices, cow_mesh_index_count, 3);
-
-                glm::vec3 pos = camera->getPosition() + camera->getFront() * 2.0f;
-                pos.y += 1.0f;
-                float scale = 0.1f;
-                glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-                model = glm::scale(model, glm::vec3(scale));
-
-                float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-                float g = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-                float b = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-                glm::vec4 color = glm::vec4(r, g, b, 1.0f);
-
-                float mass = 10.0f;
-                if (cowMesh)
-                {
-                    const auto &verts = cowMesh->getVertices();
-                    const auto &inds = cowMesh->getIndices();
-                    int stride = cowMesh->getFloatsPerVertex();
-                    auto obj = std::make_unique<StaticObject>(cowMesh, verts.data(), verts.size() / stride, inds.data(), inds.size(), stride, model, color, mass);
-                    btRigidBody *rb = obj->getRigidBody();
-                    sc->addObject(std::move(obj));
-                    if (rb)
-                    {
-                        float speed = 100.0f;
-                        glm::vec3 dir = glm::normalize(camera->getFront());
-                        rb->setLinearVelocity(btVector3(dir.x * speed, dir.y * speed, dir.z * speed));
-                    }
-                }
-            }
-        }
-        lastCPressed = c;
-    }
 
     // Apply accumulated pointer-lock mouse deltas once per frame (no smoothing)
     {
