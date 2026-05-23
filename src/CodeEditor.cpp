@@ -4,6 +4,7 @@
 #include "Scene.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -221,6 +222,204 @@ int CodeEditor::nextUtf8Boundary(const std::string &text, int byte)
     return b;
 }
 
+namespace
+{
+    inline bool isWordChar(unsigned char c)
+    {
+        return std::isalnum(c) != 0 || c == '_';
+    }
+    inline bool isSpaceChar(unsigned char c)
+    {
+        return c == ' ' || c == '\t';
+    }
+}
+
+int CodeEditor::prevWordBoundary(const std::string &text, int byte)
+{
+    if (byte <= 0)
+        return 0;
+    int p = byte;
+    // Skip spaces and tabs (but not newlines — keep them as their own boundary).
+    while (p > 0 && isSpaceChar((unsigned char)text[p - 1]))
+        --p;
+    if (p > 0 && text[p - 1] == '\n')
+    {
+        // Land just after a newline if that's what we crossed.
+        return p == byte ? p - 1 : p;
+    }
+    if (p > 0)
+    {
+        bool word = isWordChar((unsigned char)text[p - 1]);
+        while (p > 0)
+        {
+            unsigned char c = (unsigned char)text[p - 1];
+            if (c == '\n' || isSpaceChar(c))
+                break;
+            if (isWordChar(c) != word)
+                break;
+            --p;
+        }
+    }
+    return p;
+}
+
+int CodeEditor::nextWordBoundary(const std::string &text, int byte)
+{
+    int n = (int)text.size();
+    if (byte >= n)
+        return n;
+    int p = byte;
+    unsigned char first = (unsigned char)text[p];
+    if (first == '\n')
+        return p + 1;
+    if (isSpaceChar(first))
+    {
+        while (p < n && isSpaceChar((unsigned char)text[p]))
+            ++p;
+        return p;
+    }
+    bool word = isWordChar(first);
+    while (p < n)
+    {
+        unsigned char c = (unsigned char)text[p];
+        if (c == '\n' || isSpaceChar(c))
+            break;
+        if (isWordChar(c) != word)
+            break;
+        ++p;
+    }
+    while (p < n && isSpaceChar((unsigned char)text[p]))
+        ++p;
+    return p;
+}
+
+bool CodeEditor::hasSelection(const Buffer &buf)
+{
+    return buf.selectionAnchor >= 0 && buf.selectionAnchor != buf.cursor;
+}
+
+int CodeEditor::selBegin(const Buffer &buf)
+{
+    if (!hasSelection(buf))
+        return buf.cursor;
+    return std::min(buf.selectionAnchor, buf.cursor);
+}
+
+int CodeEditor::selEnd(const Buffer &buf)
+{
+    if (!hasSelection(buf))
+        return buf.cursor;
+    return std::max(buf.selectionAnchor, buf.cursor);
+}
+
+void CodeEditor::clearSelection(Buffer &buf)
+{
+    buf.selectionAnchor = -1;
+}
+
+void CodeEditor::moveCursorTo(Buffer &buf, int newPos, bool extend)
+{
+    if (extend)
+    {
+        if (buf.selectionAnchor < 0)
+            buf.selectionAnchor = buf.cursor;
+    }
+    else
+    {
+        buf.selectionAnchor = -1;
+    }
+    buf.cursor = std::max(0, std::min(newPos, (int)buf.text.size()));
+}
+
+void CodeEditor::pushUndo(Buffer &buf, EditKind kind)
+{
+    // Group consecutive same-kind edits (typing / single backspaces) into one
+    // undo step so a single Ctrl+Z reverts a whole word burst, not one char.
+    if (!buf.undoStack.empty() && buf.lastEditKind == kind &&
+        (kind == EditKind::Insert || kind == EditKind::Delete))
+    {
+        // Don't push a new entry — the existing top still represents the state
+        // before the burst began.
+        buf.redoStack.clear();
+        buf.lastEditKind = kind;
+        return;
+    }
+    UndoState s;
+    s.text = buf.text;
+    s.cursor = buf.cursor;
+    s.anchor = buf.selectionAnchor;
+    buf.undoStack.push_back(std::move(s));
+    if (buf.undoStack.size() > 500)
+        buf.undoStack.erase(buf.undoStack.begin());
+    buf.redoStack.clear();
+    buf.lastEditKind = kind;
+}
+
+void CodeEditor::deleteSelection(Buffer &buf)
+{
+    if (!hasSelection(buf))
+        return;
+    int a = selBegin(buf);
+    int b = selEnd(buf);
+    pushUndo(buf, EditKind::Other);
+    buf.text.erase(a, b - a);
+    buf.cursor = a;
+    buf.selectionAnchor = -1;
+    buf.dirty = true;
+}
+
+void CodeEditor::insertText(Buffer &buf, const std::string &s, EditKind kind)
+{
+    if (hasSelection(buf))
+    {
+        // Treat replace-selection as an atomic "Other" edit so it stays a single undo step.
+        deleteSelection(buf);
+        buf.lastEditKind = EditKind::Other;
+    }
+    pushUndo(buf, kind);
+    buf.text.insert(buf.cursor, s);
+    buf.cursor += (int)s.size();
+    buf.dirty = true;
+}
+
+void CodeEditor::applyUndo(Buffer &buf)
+{
+    if (buf.undoStack.empty())
+        return;
+    UndoState cur;
+    cur.text = buf.text;
+    cur.cursor = buf.cursor;
+    cur.anchor = buf.selectionAnchor;
+    buf.redoStack.push_back(std::move(cur));
+
+    UndoState prev = std::move(buf.undoStack.back());
+    buf.undoStack.pop_back();
+    buf.text = std::move(prev.text);
+    buf.cursor = std::min(prev.cursor, (int)buf.text.size());
+    buf.selectionAnchor = prev.anchor;
+    buf.dirty = true;
+    buf.lastEditKind = EditKind::Other;
+}
+
+void CodeEditor::applyRedo(Buffer &buf)
+{
+    if (buf.redoStack.empty())
+        return;
+    UndoState cur;
+    cur.text = buf.text;
+    cur.cursor = buf.cursor;
+    cur.anchor = buf.selectionAnchor;
+    buf.undoStack.push_back(std::move(cur));
+
+    UndoState next = std::move(buf.redoStack.back());
+    buf.redoStack.pop_back();
+    buf.text = std::move(next.text);
+    buf.cursor = std::min(next.cursor, (int)buf.text.size());
+    buf.selectionAnchor = next.anchor;
+    buf.dirty = true;
+    buf.lastEditKind = EditKind::Other;
+}
+
 void CodeEditor::render()
 {
     if (!visible)
@@ -280,7 +479,16 @@ void CodeEditor::renderEditor(Buffer &buf)
     ImGui::BeginChild("##editorSurface", region, true,
                       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_HorizontalScrollbar);
 
+    if (editorFocusRequested)
+    {
+        ImGui::SetWindowFocus();
+        editorFocusRequested = false;
+    }
+
     ImVec2 origin = ImGui::GetCursorScreenPos();
+    // Visible content area, captured before the Dummy advances the layout
+    // cursor — we need it for the cursor-stays-in-view math below.
+    ImVec2 visibleSize = ImGui::GetContentRegionAvail();
     ImDrawList *dl = ImGui::GetWindowDrawList();
 
     auto starts = lineStarts(buf.text);
@@ -318,6 +526,48 @@ void CodeEditor::renderEditor(Buffer &buf)
         dl->AddRectFilled(ImVec2(origin.x, y),
                           ImVec2(origin.x + contentWidth, y + lineHeight),
                           currentLineBg);
+    }
+
+    // Selection band(s). Compute the visual column of an arbitrary byte offset,
+    // honoring tab expansion, then paint a rectangle per affected line.
+    if (hasSelection(buf))
+    {
+        ImU32 selectionBg = IM_COL32(80, 130, 200, 110);
+        int sBegin = selBegin(buf);
+        int sEnd = selEnd(buf);
+        int beginLine, beginCol, endLine, endCol;
+        byteToLineCol(sBegin, starts, beginLine, beginCol);
+        byteToLineCol(sEnd, starts, endLine, endCol);
+
+        auto visualColAt = [&](int line, int byte) {
+            int lineStart = starts[line];
+            int v = 0;
+            for (int i = lineStart; i < byte; ++i)
+            {
+                if (buf.text[i] == '\t')
+                    v += TAB_WIDTH - (v % TAB_WIDTH);
+                else
+                    v++;
+            }
+            return v;
+        };
+
+        for (int line = beginLine; line <= endLine; ++line)
+        {
+            int lineStart = starts[line];
+            int lineEnd = (line + 1 < lineCount) ? starts[line + 1] - 1 : (int)buf.text.size();
+            int segFrom = (line == beginLine) ? sBegin : lineStart;
+            int segTo = (line == endLine) ? sEnd : lineEnd;
+            int v0 = visualColAt(line, segFrom);
+            int v1 = visualColAt(line, segTo);
+            float x0 = origin.x + (GUTTER_CHARS + v0) * charWidth;
+            float x1 = origin.x + (GUTTER_CHARS + v1) * charWidth;
+            // Show trailing-newline selection as a thin sliver so empty lines stay visible.
+            if (line < endLine && x1 == x0)
+                x1 += charWidth * 0.5f;
+            float y = origin.y + line * lineHeight;
+            dl->AddRectFilled(ImVec2(x0, y), ImVec2(x1, y + lineHeight), selectionBg);
+        }
     }
 
     // Walk tokens and render
@@ -406,37 +656,37 @@ void CodeEditor::renderEditor(Buffer &buf)
     if ((int)(t * 2.0) % 2 == 0)
         dl->AddLine(ImVec2(cx, cy), ImVec2(cx, cy + lineHeight), cursorColor, 1.5f);
 
-    // Make sure the cursor stays in view.
+    // Make sure the cursor stays in view. cx/cy are in screen coords but scroll
+    // values are window-local, so convert through (cursorLine * lineHeight) and
+    // (visualCol * charWidth) — once contentHeight exceeds the visible area
+    // mixing the two spaces causes the scroll to be set to bogus screen-sized
+    // values and the editor jitters.
     {
+        float cursorLocalY = cursorLine * lineHeight;
+        float cursorLocalX = (GUTTER_CHARS + visualCol) * charWidth;
         float viewMinY = ImGui::GetScrollY();
-        float viewMaxY = viewMinY + ImGui::GetContentRegionAvail().y;
-        if (cy < viewMinY)
-            ImGui::SetScrollY(cy);
-        else if (cy + lineHeight > viewMaxY)
-            ImGui::SetScrollY(cy + lineHeight - ImGui::GetContentRegionAvail().y);
+        float viewMaxY = viewMinY + visibleSize.y;
+        if (cursorLocalY < viewMinY)
+            ImGui::SetScrollY(cursorLocalY);
+        else if (cursorLocalY + lineHeight > viewMaxY)
+            ImGui::SetScrollY(cursorLocalY + lineHeight - visibleSize.y);
         float viewMinX = ImGui::GetScrollX();
-        float viewMaxX = viewMinX + ImGui::GetContentRegionAvail().x;
-        if (cx < viewMinX + GUTTER_CHARS * charWidth)
-            ImGui::SetScrollX(std::max(0.0f, cx - GUTTER_CHARS * charWidth));
-        else if (cx > viewMaxX - charWidth * 2)
-            ImGui::SetScrollX(cx - ImGui::GetContentRegionAvail().x + charWidth * 4);
+        float viewMaxX = viewMinX + visibleSize.x;
+        if (cursorLocalX < viewMinX + GUTTER_CHARS * charWidth)
+            ImGui::SetScrollX(std::max(0.0f, cursorLocalX - GUTTER_CHARS * charWidth));
+        else if (cursorLocalX > viewMaxX - charWidth * 2)
+            ImGui::SetScrollX(cursorLocalX - visibleSize.x + charWidth * 4);
     }
 
     // Capture clicks/focus on the editor area
     bool hovered = ImGui::IsWindowHovered();
     bool active_focus = ImGui::IsWindowFocused();
 
-    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-    {
-        ImGui::SetWindowFocus();
-        active_focus = true;
-
-        ImVec2 mp = ImGui::GetMousePos();
+    auto mousePosToByte = [&](ImVec2 mp) {
         float relX = mp.x - origin.x - GUTTER_CHARS * charWidth;
         float relY = mp.y - origin.y;
         int line = std::max(0, std::min(lineCount - 1, (int)std::floor(relY / lineHeight)));
         int targetVisualCol = std::max(0, (int)std::round(relX / charWidth));
-        // Convert visual col back to byte col, accounting for tabs.
         int lineStart = starts[line];
         int lineEnd = (line + 1 < lineCount) ? starts[line + 1] - 1 : (int)buf.text.size();
         int b = lineStart;
@@ -458,7 +708,30 @@ void CodeEditor::renderEditor(Buffer &buf)
                 b = nextUtf8Boundary(buf.text, b);
             }
         }
-        buf.cursor = b;
+        return b;
+    };
+
+    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+    {
+        ImGui::SetWindowFocus();
+        active_focus = true;
+        int b = mousePosToByte(ImGui::GetMousePos());
+        bool extend = ImGui::GetIO().KeyShift;
+        moveCursorTo(buf, b, extend);
+        buf.draggingSelection = true;
+    }
+    if (buf.draggingSelection)
+    {
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        {
+            int b = mousePosToByte(ImGui::GetMousePos());
+            if (b != buf.cursor)
+                moveCursorTo(buf, b, true);
+        }
+        else
+        {
+            buf.draggingSelection = false;
+        }
     }
 
     if (active_focus)
@@ -482,157 +755,226 @@ void CodeEditor::handleInput(Buffer &buf, ImFont *, float, float, ImVec2, ImVec2
 
     bool ctrl = io.KeyCtrl;
     bool shift = io.KeyShift;
-    (void)shift;
 
     // Ctrl+S: save
     if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false))
     {
         saveActive();
+        return;
     }
 
-    // Ctrl+V: paste
+    // Ctrl+Z: undo, Ctrl+Y (or Ctrl+Shift+Z): redo
+    if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_Z, true))
+    {
+        applyUndo(buf);
+        return;
+    }
+    if (ctrl && (ImGui::IsKeyPressed(ImGuiKey_Y, true) ||
+                 (shift && ImGui::IsKeyPressed(ImGuiKey_Z, true))))
+    {
+        applyRedo(buf);
+        return;
+    }
+
+    // Ctrl+A: select all.
+    if (ctrl && ImGui::IsKeyPressed(ImGuiKey_A, false))
+    {
+        buf.selectionAnchor = 0;
+        buf.cursor = (int)buf.text.size();
+        buf.lastEditKind = EditKind::None;
+        return;
+    }
+
+    // Ctrl+C: copy selection (if any) to clipboard.
+    if (ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false))
+    {
+        if (hasSelection(buf))
+        {
+            int a = selBegin(buf);
+            int b = selEnd(buf);
+            std::string s(buf.text.data() + a, buf.text.data() + b);
+            ImGui::SetClipboardText(s.c_str());
+        }
+        return;
+    }
+
+    // Ctrl+V: paste, replacing any selection.
     if (ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false))
     {
         const char *clip = ImGui::GetClipboardText();
-        if (clip)
+        if (clip && *clip)
         {
-            std::string s(clip);
-            buf.text.insert(buf.cursor, s);
-            buf.cursor += (int)s.size();
+            insertText(buf, std::string(clip), EditKind::Other);
+        }
+        return;
+    }
+
+    // Backspace / Ctrl+Backspace
+    if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true))
+    {
+        if (hasSelection(buf))
+        {
+            deleteSelection(buf);
+        }
+        else if (buf.cursor > 0)
+        {
+            int target = ctrl ? prevWordBoundary(buf.text, buf.cursor)
+                              : prevUtf8Boundary(buf.text, buf.cursor);
+            pushUndo(buf, EditKind::Delete);
+            buf.text.erase(target, buf.cursor - target);
+            buf.cursor = target;
             buf.dirty = true;
         }
         return;
     }
 
-    // Backspace
-    if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true))
-    {
-        if (buf.cursor > 0)
-        {
-            int prev = prevUtf8Boundary(buf.text, buf.cursor);
-            buf.text.erase(prev, buf.cursor - prev);
-            buf.cursor = prev;
-            buf.dirty = true;
-        }
-    }
-
-    // Delete
+    // Delete / Ctrl+Delete
     if (ImGui::IsKeyPressed(ImGuiKey_Delete, true))
     {
-        if (buf.cursor < (int)buf.text.size())
+        if (hasSelection(buf))
         {
-            int next = nextUtf8Boundary(buf.text, buf.cursor);
-            buf.text.erase(buf.cursor, next - buf.cursor);
+            deleteSelection(buf);
+        }
+        else if (buf.cursor < (int)buf.text.size())
+        {
+            int target = ctrl ? nextWordBoundary(buf.text, buf.cursor)
+                              : nextUtf8Boundary(buf.text, buf.cursor);
+            pushUndo(buf, EditKind::Delete);
+            buf.text.erase(buf.cursor, target - buf.cursor);
             buf.dirty = true;
         }
+        return;
     }
 
-    // Arrows
+    // Arrow movement (extend selection when Shift held; jump words when Ctrl held).
     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))
     {
-        buf.cursor = prevUtf8Boundary(buf.text, buf.cursor);
+        int target = ctrl ? prevWordBoundary(buf.text, buf.cursor)
+                          : prevUtf8Boundary(buf.text, buf.cursor);
+        moveCursorTo(buf, target, shift);
+        buf.lastEditKind = EditKind::None;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true))
     {
-        buf.cursor = nextUtf8Boundary(buf.text, buf.cursor);
+        int target = ctrl ? nextWordBoundary(buf.text, buf.cursor)
+                          : nextUtf8Boundary(buf.text, buf.cursor);
+        moveCursorTo(buf, target, shift);
+        buf.lastEditKind = EditKind::None;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true))
     {
         int line, col;
         cursorLineCol(line, col);
         if (line > 0)
-            buf.cursor = lineColToByte(buf.text, starts, line - 1, col);
+            moveCursorTo(buf, lineColToByte(buf.text, starts, line - 1, col), shift);
+        buf.lastEditKind = EditKind::None;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true))
     {
         int line, col;
         cursorLineCol(line, col);
         if (line + 1 < lineCount)
-            buf.cursor = lineColToByte(buf.text, starts, line + 1, col);
+            moveCursorTo(buf, lineColToByte(buf.text, starts, line + 1, col), shift);
+        buf.lastEditKind = EditKind::None;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Home, true))
     {
         int line, col;
         cursorLineCol(line, col);
-        buf.cursor = starts[line];
+        moveCursorTo(buf, starts[line], shift);
+        buf.lastEditKind = EditKind::None;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_End, true))
     {
         int line, col;
         cursorLineCol(line, col);
         int lineEnd = (line + 1 < lineCount) ? starts[line + 1] - 1 : (int)buf.text.size();
-        buf.cursor = lineEnd;
+        moveCursorTo(buf, lineEnd, shift);
+        buf.lastEditKind = EditKind::None;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_PageUp, true))
     {
         int line, col;
         cursorLineCol(line, col);
         int target = std::max(0, line - 20);
-        buf.cursor = lineColToByte(buf.text, starts, target, col);
+        moveCursorTo(buf, lineColToByte(buf.text, starts, target, col), shift);
+        buf.lastEditKind = EditKind::None;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_PageDown, true))
     {
         int line, col;
         cursorLineCol(line, col);
         int target = std::min(lineCount - 1, line + 20);
-        buf.cursor = lineColToByte(buf.text, starts, target, col);
+        moveCursorTo(buf, lineColToByte(buf.text, starts, target, col), shift);
+        buf.lastEditKind = EditKind::None;
     }
 
     // Enter: insert newline, preserve leading indent of current line
     if (ImGui::IsKeyPressed(ImGuiKey_Enter, true))
     {
+        if (hasSelection(buf))
+            deleteSelection(buf);
+        // Re-read line starts since deleting a selection may have shifted offsets.
+        starts = lineStarts(buf.text);
+        lineCount = (int)starts.size();
         int line, col;
         cursorLineCol(line, col);
         int lineStart = starts[line];
         std::string indent;
         for (int i = lineStart; i < (int)buf.text.size() && (buf.text[i] == ' ' || buf.text[i] == '\t'); ++i)
             indent.push_back(buf.text[i]);
-        std::string ins = "\n" + indent;
-        buf.text.insert(buf.cursor, ins);
-        buf.cursor += (int)ins.size();
-        buf.dirty = true;
+        insertText(buf, "\n" + indent, EditKind::Other);
+        return;
     }
 
     // Tab: insert spaces
     if (ImGui::IsKeyPressed(ImGuiKey_Tab, true))
     {
+        if (hasSelection(buf))
+            deleteSelection(buf);
+        starts = lineStarts(buf.text);
         int line, col;
         cursorLineCol(line, col);
         int spaces = TAB_WIDTH - (col % TAB_WIDTH);
-        buf.text.insert(buf.cursor, std::string(spaces, ' '));
-        buf.cursor += spaces;
-        buf.dirty = true;
+        insertText(buf, std::string(spaces, ' '), EditKind::Other);
+        return;
     }
 
     // Character input
-    for (ImWchar ch : io.InputQueueCharacters)
+    if (!ctrl)
     {
-        if (ch == 0)
-            continue;
-        if (ch == '\r')
-            continue;
-        if (ch < 32 && ch != '\n' && ch != '\t')
-            continue;
-        char utf8[5] = {0};
-        int n = 0;
-        if (ch < 0x80)
+        std::string burst;
+        for (ImWchar ch : io.InputQueueCharacters)
         {
-            utf8[n++] = (char)ch;
+            if (ch == 0)
+                continue;
+            if (ch == '\r')
+                continue;
+            if (ch < 32 && ch != '\n' && ch != '\t')
+                continue;
+            char utf8[5] = {0};
+            int n = 0;
+            if (ch < 0x80)
+            {
+                utf8[n++] = (char)ch;
+            }
+            else if (ch < 0x800)
+            {
+                utf8[n++] = (char)(0xC0 | ((ch >> 6) & 0x1F));
+                utf8[n++] = (char)(0x80 | (ch & 0x3F));
+            }
+            else
+            {
+                utf8[n++] = (char)(0xE0 | ((ch >> 12) & 0x0F));
+                utf8[n++] = (char)(0x80 | ((ch >> 6) & 0x3F));
+                utf8[n++] = (char)(0x80 | (ch & 0x3F));
+            }
+            burst.append(utf8, n);
         }
-        else if (ch < 0x800)
+        if (!burst.empty())
         {
-            utf8[n++] = (char)(0xC0 | ((ch >> 6) & 0x1F));
-            utf8[n++] = (char)(0x80 | (ch & 0x3F));
+            insertText(buf, burst, EditKind::Insert);
         }
-        else
-        {
-            utf8[n++] = (char)(0xE0 | ((ch >> 12) & 0x0F));
-            utf8[n++] = (char)(0x80 | ((ch >> 6) & 0x3F));
-            utf8[n++] = (char)(0x80 | (ch & 0x3F));
-        }
-        buf.text.insert(buf.cursor, utf8, n);
-        buf.cursor += n;
-        buf.dirty = true;
     }
     io.InputQueueCharacters.resize(0);
 }

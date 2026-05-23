@@ -63,7 +63,28 @@ static EM_BOOL wheel_callback(int eventType, const EmscriptenWheelEvent *e, void
     ImGuiIO &io = ImGui::GetIO();
     if (!e)
         return EM_FALSE;
-    io.AddMouseWheelEvent((float)e->deltaX, (float)e->deltaY);
+
+    float dx = (float)e->deltaX;
+    float dy = (float)e->deltaY;
+
+    // deltaMode 0 = DOM_DELTA_PIXEL: raw pixel distance, can be 100-300 per tick.
+    // ImGui expects values roughly in "lines" (~1-3 per notch), so scale down.
+    // deltaMode 1 = DOM_DELTA_LINE: already in line units — use as-is.
+    // deltaMode 2 = DOM_DELTA_PAGE: scale up so one page feels right.
+    if (e->deltaMode == 0)
+    {
+        dx /= 100.0f;
+        dy /= 100.0f;
+    }
+    else if (e->deltaMode == 2)
+    {
+        dx *= 8.0f;
+        dy *= 8.0f;
+    }
+
+    // Browser deltaY positive = scroll down; ImGui AddMouseWheelEvent positive y
+    // = scroll up — negate to match.
+    io.AddMouseWheelEvent(-dx, -dy);
     return EM_TRUE;
 }
 

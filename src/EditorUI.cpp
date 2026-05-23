@@ -437,6 +437,10 @@ void EditorUI::drawWorkspace(Scene *scene)
         if (ImGui::BeginTabItem("Code", nullptr, codeFlags))
         {
             activeTab = WorkspaceTab::CodeTab;
+            // Focus the editor surface the first frame we enter the Code tab so
+            // the user can immediately start typing without an extra click.
+            if (lastDrawnWorkspaceTab != WorkspaceTab::CodeTab && codeEditor)
+                codeEditor->requestEditorFocus();
             drawCodeTab(scene);
             ImGui::EndTabItem();
         }
@@ -450,6 +454,7 @@ void EditorUI::drawWorkspace(Scene *scene)
 
         ImGui::EndTabBar();
     }
+    lastDrawnWorkspaceTab = activeTab;
 
     ImGui::End();
     ImGui::PopStyleColor();

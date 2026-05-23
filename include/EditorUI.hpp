@@ -126,6 +126,7 @@ private:
     bool dockLayoutBuilt = false;
     WorkspaceTab activeTab = WorkspaceTab::HelpTab;
     WorkspaceTab requestedTab = WorkspaceTab::None;
+    WorkspaceTab lastDrawnWorkspaceTab = WorkspaceTab::None;
 
     SelectionState selection;
 

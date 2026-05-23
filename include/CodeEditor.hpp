@@ -18,16 +18,36 @@ class CodeEditor
 public:
     using LogFn = std::function<void(const std::string &)>;
 
+    struct UndoState
+    {
+        std::string text;
+        int cursor = 0;
+        int anchor = -1;
+    };
+
+    enum class EditKind
+    {
+        None,
+        Insert,
+        Delete,
+        Other
+    };
+
     struct Buffer
     {
         std::string path;     // absolute or relative path on disk
         std::string display;  // shown in the tab
         std::string text;     // current buffer contents
         int cursor = 0;       // byte offset of caret
+        int selectionAnchor = -1; // -1 = no active selection
         float scrollY = 0.0f;
         float scrollX = 0.0f;
         bool dirty = false;
         bool focusRequested = false;
+        bool draggingSelection = false;
+        std::vector<UndoState> undoStack;
+        std::vector<UndoState> redoStack;
+        EditKind lastEditKind = EditKind::None;
     };
 
     void setLogger(LogFn fn) { logger = std::move(fn); }
@@ -50,6 +70,9 @@ public:
     bool hasActiveBuffer() const { return active >= 0 && active < (int)buffers.size(); }
     const std::string &activePath() const;
 
+    // Ask the editor surface to grab keyboard focus on its next render.
+    void requestEditorFocus() { editorFocusRequested = true; }
+
 private:
     void renderEditor(Buffer &buf);
     void handleInput(Buffer &buf, ImFont *font, float charWidth, float lineHeight, ImVec2 origin, ImVec2 widgetSize);
@@ -60,10 +83,25 @@ private:
     static int lineColToByte(const std::string &text, const std::vector<int> &starts, int line, int col);
     static int prevUtf8Boundary(const std::string &text, int byte);
     static int nextUtf8Boundary(const std::string &text, int byte);
+    static int prevWordBoundary(const std::string &text, int byte);
+    static int nextWordBoundary(const std::string &text, int byte);
+
+    static bool hasSelection(const Buffer &buf);
+    static int selBegin(const Buffer &buf);
+    static int selEnd(const Buffer &buf);
+    static void clearSelection(Buffer &buf);
+    static void moveCursorTo(Buffer &buf, int newPos, bool extend);
+
+    void pushUndo(Buffer &buf, EditKind kind);
+    void deleteSelection(Buffer &buf);
+    void insertText(Buffer &buf, const std::string &s, EditKind kind);
+    void applyUndo(Buffer &buf);
+    void applyRedo(Buffer &buf);
 
     std::vector<Buffer> buffers;
     int active = -1;
     bool visible = true;
+    bool editorFocusRequested = false;
     LogFn logger;
 };
 
