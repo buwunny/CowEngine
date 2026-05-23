@@ -34,6 +34,17 @@ public:
     void checkReload();
     void forceReload();
 
+    // Mirror script (.cow) and model (.obj) files from the in-memory filesystem
+    // into localStorage so they persist across web page reloads. Snapshotting
+    // models is opt-in because OBJ files can be large.
+    // No-op on non-web builds.
+    static void snapshotScriptsToLocalStorage();
+    static void snapshotModelsToLocalStorage();
+
+    // Restore scripts and models from localStorage back into the in-memory
+    // filesystem. Call before loading scenes/scripts. No-op on non-web builds.
+    static void restoreAssetsFromLocalStorage();
+
     Object *raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance);
 
     void addPlayer(std::unique_ptr<Player> player, Window *window, PhysicsWorld &physics);

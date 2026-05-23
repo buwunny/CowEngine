@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #endif
@@ -59,10 +61,20 @@ R"html(<!doctype html>
     </div>
     <script>
         var __COWENGINE_SCENE__ = null;
-        // Write the exported scene to localStorage before CowEngine.js loads so the
-        // C++ localStorage mechanism picks it up without any EM_ASM global reads.
+        var __COWENGINE_SCRIPTS__ = null;
+        var __COWENGINE_MODELS__ = null;
+        // Write the exported assets to localStorage before CowEngine.js loads so
+        // the C++ localStorage mechanism picks them up without any EM_ASM global
+        // reads. Scripts and models are seeded the same way as the scene so the
+        // exported game's restoreAssetsFromLocalStorage() finds the latest edits.
         if (typeof __COWENGINE_SCENE__ === 'string' && __COWENGINE_SCENE__) {
             try { localStorage.setItem('cowengine_save', __COWENGINE_SCENE__); } catch(e) {}
+        }
+        if (typeof __COWENGINE_SCRIPTS__ === 'string' && __COWENGINE_SCRIPTS__) {
+            try { localStorage.setItem('cowengine_scripts', __COWENGINE_SCRIPTS__); } catch(e) {}
+        }
+        if (typeof __COWENGINE_MODELS__ === 'string' && __COWENGINE_MODELS__) {
+            try { localStorage.setItem('cowengine_models', __COWENGINE_MODELS__); } catch(e) {}
         }
         function resizeCanvas(){
             var c=document.getElementById('canvas');if(!c)return;
@@ -118,27 +130,31 @@ namespace
         return out;
     }
 
-    // Replace the __COWENGINE_SCENE__ sentinel in HTML bytes with the base64-encoded scene.
-    void patchHtmlScene(std::vector<unsigned char> &htmlBytes, const std::string &sceneJson)
+    // Replace a `var __COWENGINE_<NAME>__ = null;` sentinel with a base64-decoded
+    // string literal so JS-side localStorage seeding picks it up.
+    void patchHtmlSentinel(std::string &html, const std::string &varName, const std::string &payload)
     {
-        const std::string marker = "var __COWENGINE_SCENE__ = null;";
-        std::string html(htmlBytes.begin(), htmlBytes.end());
+        if (payload.empty())
+            return;
+        std::string marker = "var " + varName + " = null;";
         auto pos = html.find(marker);
         if (pos == std::string::npos)
             return;
-        std::string replacement = "var __COWENGINE_SCENE__ = atob('" + base64Encode(sceneJson) + "');";
+        std::string replacement = "var " + varName + " = atob('" + base64Encode(payload) + "');";
         html.replace(pos, marker.size(), replacement);
-        htmlBytes.assign(html.begin(), html.end());
     }
 
-    // Build a fresh game HTML blob from the embedded template, patched with the scene.
-    std::vector<unsigned char> makeGameHtml(const std::string &sceneJson)
+    // Build a fresh game HTML blob from the embedded template, patched with the
+    // exported scene plus snapshotted scripts and models.
+    std::vector<unsigned char> makeGameHtml(const std::string &sceneJson,
+                                            const std::string &scriptsJson,
+                                            const std::string &modelsJson)
     {
-        std::vector<unsigned char> html(kGameHtmlTemplate,
-                                        kGameHtmlTemplate + std::strlen(kGameHtmlTemplate));
-        if (!sceneJson.empty())
-            patchHtmlScene(html, sceneJson);
-        return html;
+        std::string html(kGameHtmlTemplate);
+        patchHtmlSentinel(html, "__COWENGINE_SCENE__", sceneJson);
+        patchHtmlSentinel(html, "__COWENGINE_SCRIPTS__", scriptsJson);
+        patchHtmlSentinel(html, "__COWENGINE_MODELS__", modelsJson);
+        return std::vector<unsigned char>(html.begin(), html.end());
     }
 
     // Pick which target maps to which slice of the embedded template archive.
@@ -273,6 +289,48 @@ namespace
         sf.bytes.assign(s.begin(), s.end());
         out.push_back(std::move(sf));
     }
+
+    // Walk `root` for files with `ext` and stage them at their relative paths.
+    // Also accumulates them into a JSON object (path -> contents) suitable for
+    // seeding into the game's localStorage via the HTML sentinel.
+    void stageDirectoryAndJson(const std::string &root, const std::string &ext,
+                               std::vector<StagedFile> &out, std::string &outJson)
+    {
+        namespace fs = std::filesystem;
+        nlohmann::json j = nlohmann::json::object();
+        std::error_code ec;
+        fs::path rootPath(root);
+        if (!fs::exists(rootPath, ec))
+        {
+            outJson.clear();
+            return;
+        }
+        for (auto it = fs::recursive_directory_iterator(rootPath, ec);
+             !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+        {
+            const fs::directory_entry &entry = *it;
+            if (!entry.is_regular_file(ec))
+                continue;
+            if (entry.path().extension() != ext)
+                continue;
+            std::ifstream f(entry.path(), std::ios::binary);
+            if (!f)
+                continue;
+            std::ostringstream ss;
+            ss << f.rdbuf();
+            std::string content = ss.str();
+            fs::path rel = fs::relative(entry.path(), rootPath, ec);
+            if (ec)
+                continue;
+            std::string relStr = root + "/" + rel.generic_string();
+            StagedFile sf;
+            sf.path = relStr;
+            sf.bytes.assign(content.begin(), content.end());
+            out.push_back(std::move(sf));
+            j[relStr] = content;
+        }
+        outJson = j.empty() ? std::string() : j.dump();
+    }
 } // namespace
 
 bool GameBuilder::isTargetAvailable(Target t)
@@ -336,6 +394,13 @@ GameBuilder::Result GameBuilder::build(Target t, Scene *scene,
         staged.push_back(std::move(sf));
     }
     stageSceneSnapshot(scene, staged);
+    // Snapshot scripts and models so the exported game has the user's edits and
+    // any newly added assets, both as plain files in the zip and as localStorage
+    // seeds in the HTML (the latter is what the runtime actually uses, since the
+    // game wasm reads from its bundled CowEngine.data).
+    std::string scriptsJson, modelsJson;
+    stageDirectoryAndJson("scripts", ".cow", staged, scriptsJson);
+    stageDirectoryAndJson("models", ".obj", staged, modelsJson);
     // Generate a fresh index.html / CowEngine.html from the embedded template with the
     // current scene baked in. buildStoredZip keeps the last occurrence of each path,
     // so these entries replace whatever HTML was in the pre-built game-web bundle.
@@ -349,7 +414,7 @@ GameBuilder::Result GameBuilder::build(Target t, Scene *scene,
                 break;
             }
         }
-        auto freshHtml = makeGameHtml(sceneJson);
+        auto freshHtml = makeGameHtml(sceneJson, scriptsJson, modelsJson);
         StagedFile si, sc;
         si.path = "index.html";    si.bytes = freshHtml;
         sc.path = "CowEngine.html"; sc.bytes = freshHtml;
@@ -405,10 +470,20 @@ GameBuilder::Result GameBuilder::build(Target t, Scene *scene,
             }
         }
     }
+    // Snapshot scripts/models alongside the scene so a native export of a web
+    // game still carries the user's latest edits via the HTML localStorage seed.
+    // (For Linux/Windows native targets the HTML is irrelevant; the helper just
+    // returns empty json when the directories are absent.)
+    std::string scriptsJson, modelsJson;
+    {
+        std::vector<StagedFile> ignored;
+        stageDirectoryAndJson("scripts", ".cow", ignored, scriptsJson);
+        stageDirectoryAndJson("models", ".obj", ignored, modelsJson);
+    }
     // Generate a fresh index.html / CowEngine.html from the embedded template with the
     // current scene baked in. This overwrites whatever HTML the template bundle wrote.
     {
-        auto freshHtml = makeGameHtml(sceneJson);
+        auto freshHtml = makeGameHtml(sceneJson, scriptsJson, modelsJson);
         for (auto name : {"index.html", "CowEngine.html"})
         {
             std::ofstream f(target / name, std::ios::binary);

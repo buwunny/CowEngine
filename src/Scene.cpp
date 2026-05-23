@@ -20,6 +20,43 @@ Scene *Scene::s_current = nullptr;
 EM_JS(void, saveToLocalStorage, (const char *data), {
     localStorage.setItem('cowengine_save', UTF8ToString(data));
 });
+
+EM_JS(void, em_local_storage_set, (const char *key, const char *data), {
+    try { localStorage.setItem(UTF8ToString(key), UTF8ToString(data)); }
+    catch (e) { console.warn('localStorage.setItem failed for', UTF8ToString(key), e); }
+});
+
+// Walk both asset localStorage keys and write each entry into the in-memory
+// filesystem via FS.writeFile. Doing the entire restore in JS avoids
+// round-tripping strings through _malloc/stringToUTF8 (which are not always
+// exposed depending on Emscripten settings).
+EM_JS(void, em_restore_assets_to_fs, (), {
+    function restoreKey(key) {
+        var raw = null;
+        try { raw = localStorage.getItem(key); } catch (e) { return; }
+        if (raw == null) return;
+        var obj;
+        try { obj = JSON.parse(raw); }
+        catch (e) { console.warn('cowengine: bad JSON in', key, e); return; }
+        if (!obj || typeof obj !== 'object') return;
+        for (var p in obj) {
+            if (!obj.hasOwnProperty(p)) continue;
+            var v = obj[p];
+            if (typeof v !== 'string') continue;
+            var abs = (p.charAt(0) === "/") ? p : ("/" + p);
+            var parts = abs.split("/");
+            var dir = "";
+            for (var i = 1; i < parts.length - 1; ++i) {
+                dir += "/" + parts[i];
+                try { FS.mkdir(dir); } catch (e) { /* exists */ }
+            }
+            try { FS.writeFile(abs, v); }
+            catch (e) { console.error("cowengine: FS.writeFile failed for", abs, e); }
+        }
+    }
+    restoreKey('cowengine_scripts');
+    restoreKey('cowengine_models');
+});
 #endif
 
 using json = nlohmann::json;
@@ -370,8 +407,72 @@ bool Scene::saveToJSON(const std::string &path)
 // Also save to localStorage for web builds
 #ifdef __EMSCRIPTEN__
     saveToLocalStorage(j.dump().c_str());
+    snapshotScriptsToLocalStorage();
+    snapshotModelsToLocalStorage();
 #endif
     return true;
+}
+
+namespace
+{
+#ifdef __EMSCRIPTEN__
+    // Walk `root` for files with `ext` and produce a JSON object mapping
+    // "root/<rel/path>" -> file contents. Used for the localStorage mirror.
+    std::string snapshotDirectory(const std::string &root, const std::string &ext)
+    {
+        namespace fs = std::filesystem;
+        json out = json::object();
+        std::error_code ec;
+        fs::path rootPath(root);
+        if (!fs::exists(rootPath, ec))
+            return "";
+        for (auto it = fs::recursive_directory_iterator(rootPath, ec);
+             !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+        {
+            const fs::directory_entry &entry = *it;
+            if (!entry.is_regular_file(ec))
+                continue;
+            if (entry.path().extension() != ext)
+                continue;
+            std::ifstream in(entry.path(), std::ios::binary);
+            if (!in)
+                continue;
+            std::stringstream ss;
+            ss << in.rdbuf();
+            fs::path rel = fs::relative(entry.path(), rootPath, ec);
+            if (ec)
+                continue;
+            out[root + "/" + rel.generic_string()] = ss.str();
+        }
+        return out.dump();
+    }
+
+#endif
+}
+
+void Scene::snapshotScriptsToLocalStorage()
+{
+#ifdef __EMSCRIPTEN__
+    std::string blob = snapshotDirectory("scripts", ".cow");
+    if (!blob.empty())
+        em_local_storage_set("cowengine_scripts", blob.c_str());
+#endif
+}
+
+void Scene::snapshotModelsToLocalStorage()
+{
+#ifdef __EMSCRIPTEN__
+    std::string blob = snapshotDirectory("models", ".obj");
+    if (!blob.empty())
+        em_local_storage_set("cowengine_models", blob.c_str());
+#endif
+}
+
+void Scene::restoreAssetsFromLocalStorage()
+{
+#ifdef __EMSCRIPTEN__
+    em_restore_assets_to_fs();
+#endif
 }
 
 void Scene::checkReload()

@@ -1,6 +1,7 @@
 #include "CodeEditor.hpp"
 
 #include "script/CowScript.hpp"
+#include "Scene.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -151,8 +152,12 @@ bool CodeEditor::saveActive()
         return false;
     }
     out << b.text;
+    out.close();
     b.dirty = false;
     log("Saved " + b.path);
+    // Mirror the on-disk change into localStorage so .cow edits survive a web
+    // page reload (parallels Scene::saveToJSON).
+    Scene::snapshotScriptsToLocalStorage();
     return true;
 }
 

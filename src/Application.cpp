@@ -46,6 +46,11 @@ void Application::init()
     scene = new Scene();
     bool sceneLoaded = false;
 #ifdef __EMSCRIPTEN__
+    // Restore script/model files from localStorage into the in-memory FS so that
+    // any subsequent script/mesh loads pick up the latest edits or, for game
+    // builds, the assets baked into the HTML by GameBuilder.
+    Scene::restoreAssetsFromLocalStorage();
+
     // For game builds: kGameHtmlTemplate writes the exported scene to localStorage
     // ('cowengine_save') synchronously before CowEngine.js loads, so we find it here.
     // For editor builds: this restores the scene from the last editor save.
