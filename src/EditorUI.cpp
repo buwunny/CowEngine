@@ -63,6 +63,7 @@ void EditorUI::render(Scene *scene, Window *window, PhysicsWorld *physics, float
 
     ImGuizmo::BeginFrame();
     windowRef = window;
+    sceneRef = scene;
     physicsRef = physics;
 
     ImGuiIO &io = ImGui::GetIO();
@@ -1043,6 +1044,7 @@ void EditorUI::drawTestingOverlay()
 void EditorUI::drawSceneHierarchy(Scene *scene)
 {
     ImGui::Begin("Scene Hierarchy", &showHierarchy);
+    heiarchyInput = (ImGui::IsWindowHovered(ImGuiFocusedFlags_RootAndChildWindows) || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) && showHierarchy;
 
     if (!scene)
     {
@@ -1532,6 +1534,7 @@ void EditorUI::setSelection(Object *object)
 {
     if (selection.object == object)
         return;
+    sceneRef->setSelectedObject(object);
     selection.object = object;
     selection.hasCache = false;
 }

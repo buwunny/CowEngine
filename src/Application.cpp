@@ -56,7 +56,8 @@ void Application::init()
     // For editor builds: this restores the scene from the last editor save.
     EM_ASM({
         var data = localStorage.getItem('cowengine_save');
-        if (data) {
+        if (data)
+        {
             Module.ccall('app_set_has_local_storage_data', null, ['number'], [1]);
             Module.ccall('app_set_saved_data', null, ['string'], [data]);
         }
@@ -235,6 +236,7 @@ void Application::tick()
     ImGuiIO &io = ImGui::GetIO();
     bool uiCapturing = io.WantCaptureMouse || io.WantCaptureKeyboard;
     bool allowGameInput = editorUI && editorUI->isGameViewInputEnabled();
+    bool heiarchyInput = editorUI && editorUI->isHeiarchyInputEnabled();
     if (testingMode && scene->getPlayer() && (!uiCapturing || allowGameInput))
         scene->getPlayer()
             ->processInput(window, delta, physics);
@@ -247,23 +249,37 @@ void Application::tick()
             scene->getPlayer()->resetInputState();
     }
 
-    if (!testingMode && editorInput && allowGameInput)
+    if (!testingMode && editorInput)
     {
-        editorInput->setMovementSpeed(editorUI->getCameraSpeed());
-        editorInput->processInput(window, delta);
-        checkSelection();
-        // process mouse when in editor mode and game view is focused, only if cursor is disabled (e.g. on web)
-        if (editorUI && editorUI->isGameViewInputEnabled() && window->isCursorDisabled())
+        if (allowGameInput || heiarchyInput)
         {
+            // Focus camera on selected object when F is pressed
+            if (window->isKeyPressed(GLFW_KEY_F) && scene->getSelectedObject())
+            {
+                glm::vec3 targetPos = scene->getSelectedObject()->getModel()[3];
+                glm::vec3 camDir = glm::normalize(camera->getPosition() - targetPos);
+                camera->setPosition(targetPos + camDir * 5.0f);
+            }
+        }
+        if (allowGameInput)
+        {
+            editorInput->setMovementSpeed(editorUI->getCameraSpeed());
+            editorInput->processInput(window, delta);
+            checkSelection();
+
+            // process mouse when in editor mode and game view is focused, only if cursor is disabled (e.g. on web)
+            if (editorUI && editorUI->isGameViewInputEnabled() && window->isCursorDisabled())
+            {
 #ifdef __EMSCRIPTEN__
-            EmscriptenMouseEvent mouseState;
-            emscripten_get_mouse_status(&mouseState);
-            editorInput->processMouseDelta(static_cast<float>(mouseState.movementX), static_cast<float>(-mouseState.movementY));
+                EmscriptenMouseEvent mouseState;
+                emscripten_get_mouse_status(&mouseState);
+                editorInput->processMouseDelta(static_cast<float>(mouseState.movementX), static_cast<float>(-mouseState.movementY));
 #else
-            double mouseX, mouseY;
-            glfwGetCursorPos(window->getWindow(), &mouseX, &mouseY);
-            editorInput->processMouse(window->getWindow(), mouseX, mouseY);
+                double mouseX, mouseY;
+                glfwGetCursorPos(window->getWindow(), &mouseX, &mouseY);
+                editorInput->processMouse(window->getWindow(), mouseX, mouseY);
 #endif
+            }
         }
     }
     // Resize viewport / compute aspect

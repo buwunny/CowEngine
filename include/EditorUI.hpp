@@ -54,6 +54,7 @@ public:
     bool getGameViewport(float &x, float &y, float &w, float &h, float &scaleX, float &scaleY) const;
     bool isTestingMode() const { return testingMode; }
     bool isGameViewInputEnabled() const { return gameViewInput; }
+    bool isHeiarchyInputEnabled() const { return heiarchyInput; }
     float getCameraSpeed() const { return cameraSpeed; }
     void setGameTexture(ImTextureID textureId, float width, float height);
     void setSelection(Object *object);
@@ -149,8 +150,10 @@ private:
     float framebufferScaleY = 1.0f;
     bool hasGameViewport = false;
     bool gameViewInput = false;
+    bool heiarchyInput = false;
 
     Window *windowRef = nullptr;
+    Scene *sceneRef = nullptr;
 
     ImTextureID gameTextureId = 0;
     float gameTextureW = 0.0f;
