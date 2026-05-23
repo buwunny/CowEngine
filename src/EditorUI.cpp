@@ -635,6 +635,30 @@ void EditorUI::drawCodeTab(Scene *scene)
         }
     }
     ImGui::SameLine();
+    if(ImGui::Button("Attach to selection"))
+    {
+        if (selection.object)
+        {
+            if (codeEditor->hasActiveBuffer())
+            {
+                std::string path = codeEditor->activePath();
+                selection.object->setScriptPath(path);
+                addLog("Attached script to " + selection.object->getName() + ": " + path,
+                       ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
+            }
+            else
+            {
+                addLog("Open a script in the editor first to attach it.",
+                       ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
+            }
+        }
+        else
+        {
+            addLog("Select an object in the Scene tab first to attach the script to.",
+                   ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
+        }
+    }
+    ImGui::SameLine();
     ImGui::TextDisabled("Ctrl+S to save");
 
     if (ImGui::BeginPopup("##NewScript"))
