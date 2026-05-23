@@ -61,6 +61,7 @@ set(SOURCES
     src/InputHandler.cpp
     src/Window.cpp
     src/Application.cpp
+    src/ColliderDebugDrawer.cpp
     src/EditorUI.cpp
     src/CodeEditor.cpp
     src/script/CowScript.cpp

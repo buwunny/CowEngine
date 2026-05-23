@@ -55,6 +55,7 @@ public:
     bool isTestingMode() const { return testingMode; }
     bool isGameViewInputEnabled() const { return gameViewInput; }
     bool isHeiarchyInputEnabled() const { return heiarchyInput; }
+    bool isColliderVisualizationEnabled() const { return showColliders; }
     float getCameraSpeed() const { return cameraSpeed; }
     void setGameTexture(ImTextureID textureId, float width, float height);
     void setSelection(Object *object);
@@ -122,6 +123,7 @@ private:
     bool showRuntime = true;
     bool showFiles = true;
     bool showGameView = true;
+    bool showColliders = true;
     bool testingMode = false;
     bool dockLayoutBuilt = false;
     WorkspaceTab activeTab = WorkspaceTab::HelpTab;

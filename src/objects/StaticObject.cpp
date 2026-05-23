@@ -1,4 +1,8 @@
 #include "objects/StaticObject.hpp"
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <set>
 #include <string>
 
 StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsigned int *indices, size_t index_count, int floats_per_vertex, glm::mat4 model, glm::vec4 color, float mass)
@@ -14,39 +18,39 @@ StaticObject::StaticObject(const float *verts, size_t vertex_count, const unsign
     }
     else
     {
-        glm::vec3 vmin(verts[0], verts[1], verts[2]);
-        glm::vec3 vmax = vmin;
-        for (size_t i = 1; i < vertex_count; ++i)
-        {
-            const float *v = verts + i * floats_per_vertex;
-            glm::vec3 p(v[0], v[1], v[2]);
-            vmin.x = std::min(vmin.x, p.x);
-            vmin.y = std::min(vmin.y, p.y);
-            vmin.z = std::min(vmin.z, p.z);
-            vmax.x = std::max(vmax.x, p.x);
-            vmax.y = std::max(vmax.y, p.y);
-            vmax.z = std::max(vmax.z, p.z);
-        }
-
-        glm::vec3 center = (vmin + vmax) * 0.5f;
-        glm::vec3 halfExtents = (vmax - vmin) * 0.5f;
-
-        // Build convex hull shape centered on origin by subtracting center
+        // Build the hull in the mesh's original local space — the renderer
+        // draws vertices unmodified, so the collider has to share that frame
+        // or it ends up visually offset (e.g. the AABB center of an Eiffel
+        // Tower model sits high up the spire while its origin is at the base).
+        // Dedupe positions: OBJ vertices that share a position but differ in
+        // normal/UV would otherwise be added many times, slowing
+        // optimizeConvexHull and leaving near-coincident points that can
+        // survive its reduction. Quantize to 1e-5 units so float jitter
+        // collapses to a single key.
         btConvexHullShape *hull = new btConvexHullShape();
+        std::set<std::array<int32_t, 3>> seenPositions;
         for (size_t i = 0; i < vertex_count; ++i)
         {
             const float *v = verts + i * floats_per_vertex;
-            btVector3 p(v[0] - center.x, v[1] - center.y, v[2] - center.z);
-            hull->addPoint(p, false);
+            std::array<int32_t, 3> key{
+                static_cast<int32_t>(std::lround(v[0] * 100000.0f)),
+                static_cast<int32_t>(std::lround(v[1] * 100000.0f)),
+                static_cast<int32_t>(std::lround(v[2] * 100000.0f))};
+            if (!seenPositions.insert(key).second)
+                continue;
+            hull->addPoint(btVector3(v[0], v[1], v[2]), false);
         }
+        // Bullet's default 0.04 unit collision margin inflates the effective
+        // contact surface — for sub-meter models this is the dominant source
+        // of "loose" hits. Use a small absolute value that still keeps GJK
+        // numerically stable.
+        hull->setMargin(0.005f);
         hull->optimizeConvexHull();
         hull->recalcLocalAabb();
 
         collisionShape.reset(hull);
 
-        // Incorporate center offset into model and initial rigidbody transform
-        glm::mat4 centerMat = glm::translate(glm::mat4(1.0f), center);
-        this->setInitialModel(model * centerMat);
+        this->setInitialModel(model);
 
         btVector3 inertia(0, 0, 0);
         if (mass != 0.0f)
@@ -97,38 +101,29 @@ StaticObject::StaticObject(std::shared_ptr<Mesh> sharedMesh, const float *verts,
     }
     else
     {
-        glm::vec3 vmin(verts[0], verts[1], verts[2]);
-        glm::vec3 vmax = vmin;
-        for (size_t i = 1; i < vertex_count; ++i)
-        {
-            const float *v = verts + i * floats_per_vertex;
-            glm::vec3 p(v[0], v[1], v[2]);
-            vmin.x = std::min(vmin.x, p.x);
-            vmin.y = std::min(vmin.y, p.y);
-            vmin.z = std::min(vmin.z, p.z);
-            vmax.x = std::max(vmax.x, p.x);
-            vmax.y = std::max(vmax.y, p.y);
-            vmax.z = std::max(vmax.z, p.z);
-        }
-
-        glm::vec3 center = (vmin + vmax) * 0.5f;
-        glm::vec3 halfExtents = (vmax - vmin) * 0.5f;
-
+        // Build the hull in the mesh's original local space so it lines up
+        // with the renderer (see the matching block in the other constructor
+        // for the full rationale).
         btConvexHullShape *hull = new btConvexHullShape();
+        std::set<std::array<int32_t, 3>> seenPositions;
         for (size_t i = 0; i < vertex_count; ++i)
         {
             const float *v = verts + i * floats_per_vertex;
-            btVector3 p(v[0] - center.x, v[1] - center.y, v[2] - center.z);
-            hull->addPoint(p, false);
+            std::array<int32_t, 3> key{
+                static_cast<int32_t>(std::lround(v[0] * 100000.0f)),
+                static_cast<int32_t>(std::lround(v[1] * 100000.0f)),
+                static_cast<int32_t>(std::lround(v[2] * 100000.0f))};
+            if (!seenPositions.insert(key).second)
+                continue;
+            hull->addPoint(btVector3(v[0], v[1], v[2]), false);
         }
+        hull->setMargin(0.005f);
         hull->optimizeConvexHull();
         hull->recalcLocalAabb();
 
         collisionShape.reset(hull);
 
-        // Incorporate center offset into model and initial rigidbody transform
-        glm::mat4 centerMat = glm::translate(glm::mat4(1.0f), center);
-        this->setInitialModel(model * centerMat);
+        this->setInitialModel(model);
 
         btVector3 inertia(0, 0, 0);
         if (mass != 0.0f)

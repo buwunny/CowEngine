@@ -52,6 +52,7 @@ Application::~Application()
     delete imguiLayer;
     delete editorUI;
     delete editorInput;
+    delete colliderDebug;
     delete scriptHost;
 }
 
@@ -115,6 +116,11 @@ void Application::init()
     editorUI = new EditorUI();
     editorUI->setCamera(camera);
     editorInput = new InputHandler(camera);
+
+    // Render collider wireframes for the selected object via Bullet's debug-draw hook.
+    colliderDebug = new ColliderDebugDrawer();
+    colliderDebug->setDebugMode(btIDebugDraw::DBG_DrawWireframe);
+    physics->getWorld()->setDebugDrawer(colliderDebug);
 
     scriptHost = new ScriptHost();
     scriptHost->setContext(scene, window);
@@ -407,6 +413,32 @@ void Application::tick()
 
     scene->update();
     scene->render(*window, *shader);
+
+    // Editor-only: draw the selected object's collider as a wireframe overlay
+    // so the user can see what the physics shape actually looks like.
+    if (colliderDebug && scene->getSelectedObject() && !testingMode && editorUI && editorUI->isColliderVisualizationEnabled())
+    {
+        Object *sel = scene->getSelectedObject();
+        btRigidBody *rb = sel->getRigidBody();
+        btCollisionShape *shape = sel->getCollisionShape();
+        if (rb && shape)
+        {
+            btTransform trans;
+            if (rb->getMotionState())
+                rb->getMotionState()->getWorldTransform(trans);
+            else
+                trans = rb->getWorldTransform();
+
+            colliderDebug->beginFrame();
+            physics->getWorld()->debugDrawObject(trans, shape, btVector3(0.2f, 1.0f, 0.4f));
+            // Draw on top of the mesh so it stays visible even when inside geometry.
+            glDisable(GL_DEPTH_TEST);
+            window->setLineWidth(2.0f);
+            colliderDebug->flush(*shader, glm::vec4(0.2f, 1.0f, 0.4f, 1.0f));
+            window->setLineWidth(1.0f);
+            glEnable(GL_DEPTH_TEST);
+        }
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);

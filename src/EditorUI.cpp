@@ -1196,6 +1196,7 @@ void EditorUI::drawInspector(Scene *scene)
             selection.object->setMass(mass);
         }
         ImGui::Text("Velocity: %.2f %.2f %.2f", v.getX(), v.getY(), v.getZ());
+        ImGui::Checkbox("Show Collider", &showColliders);
     }
 
     ImGui::Separator();

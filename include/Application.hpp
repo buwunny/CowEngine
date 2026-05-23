@@ -10,6 +10,7 @@
 #include "ImGuiLayer.hpp"
 #include "EditorUI.hpp"
 #include "InputHandler.hpp"
+#include "ColliderDebugDrawer.hpp"
 #include "script/ScriptHost.hpp"
 
 class Application
@@ -45,6 +46,7 @@ private:
     ImGuiLayer *imguiLayer = nullptr;
     EditorUI *editorUI = nullptr;
     InputHandler *editorInput = nullptr;
+    ColliderDebugDrawer *colliderDebug = nullptr;
     ScriptHost *scriptHost = nullptr;
     double scriptTime = 0.0;
 
