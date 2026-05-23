@@ -24,12 +24,14 @@
             flex-direction: column;
             flex: 1 1 auto;
             box-sizing: border-box;
+            min-height: 0;
         }
 
         #canvas {
             display: block;
             width: 100%;
             flex: 1 1 auto;
+            min-height: 0;
             background: #000;
         }
 
@@ -99,16 +101,11 @@
             var canvas = document.getElementById('canvas');
             if (!canvas) return;
             var ratio = window.devicePixelRatio || 1;
-            var availableWidth, availableHeight;
-            if (document.fullscreenElement === canvas) {
-                availableWidth = window.innerWidth;
-                availableHeight = window.innerHeight;
-            } else {
-                availableWidth = canvas.clientWidth;
-                availableHeight = canvas.clientHeight;
-            }
-            canvas.width = Math.max(1, Math.floor(availableWidth * ratio));
-            canvas.height = Math.max(1, Math.floor(availableHeight * ratio));
+            // Always use window.innerWidth/Height — editor fills full window and
+            // parent.clientHeight lags on DevTools open/close due to canvas
+            // intrinsic-size feedback through flex-basis.
+            canvas.width = Math.max(1, Math.floor(window.innerWidth * ratio));
+            canvas.height = Math.max(1, Math.floor(window.innerHeight * ratio));
             if (typeof Module !== 'undefined' && Module) {
                 Module.canvas = canvas;
             }
