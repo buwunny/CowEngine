@@ -1419,7 +1419,8 @@ void EditorUI::drawFileBrowser(Scene *scene)
         } });
 
     drawSection("Models", fileBrowserModels, [&](const std::string &path)
-                { spawnStaticObjectFromMesh(scene, path); });
+                { spawnStaticObjectFromMesh(scene, path);
+                requestedTab = WorkspaceTab::SceneTab; });
 
     drawSection("Scenes", fileBrowserScenes, [&](const std::string &path)
                 {
@@ -1427,6 +1428,7 @@ void EditorUI::drawFileBrowser(Scene *scene)
         {
             setSelection(nullptr);
             addLog("Loaded scene " + path, ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
+            requestedTab = WorkspaceTab::SceneTab;
         }
         else
         {
