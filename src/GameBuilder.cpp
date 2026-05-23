@@ -388,38 +388,38 @@ GameBuilder::Result GameBuilder::build(Target t, Scene *scene,
     for (std::size_t i = 0; i < count; ++i)
     {
         EmbeddedFile ef = EmbeddedTemplate_fileAt(slice, i);
+        // Drop CowEngine.html from the template — we emit a fresh index.html
+        // below, and the running game never reads CowEngine.html anyway.
+        if (std::string(ef.relativePath) == "CowEngine.html")
+            continue;
         StagedFile sf;
         sf.path = ef.relativePath;
         sf.bytes.assign(ef.data, ef.data + ef.size);
         staged.push_back(std::move(sf));
     }
-    stageSceneSnapshot(scene, staged);
-    // Snapshot scripts and models so the exported game has the user's edits and
-    // any newly added assets, both as plain files in the zip and as localStorage
-    // seeds in the HTML (the latter is what the runtime actually uses, since the
-    // game wasm reads from its bundled CowEngine.data).
-    std::string scriptsJson, modelsJson;
-    stageDirectoryAndJson("scripts", ".cow", staged, scriptsJson);
-    stageDirectoryAndJson("models", ".obj", staged, modelsJson);
-    // Generate a fresh index.html / CowEngine.html from the embedded template with the
-    // current scene baked in. buildStoredZip keeps the last occurrence of each path,
-    // so these entries replace whatever HTML was in the pre-built game-web bundle.
+    // Snapshot the live scene + scripts + models for the HTML localStorage seed.
+    // The running web game reads these from localStorage (see Application::init),
+    // not from on-disk files inside the unzipped folder, so we do NOT add the
+    // raw scene/script/model files to the zip — they would just be a copy of
+    // what's already in CowEngine.data plus a third copy in HTML base64.
+    std::string sceneJson;
     {
-        std::string sceneJson;
-        for (const auto &sf : staged)
-        {
-            if (sf.path == "scenes/scene.json")
-            {
-                sceneJson.assign(sf.bytes.begin(), sf.bytes.end());
-                break;
-            }
-        }
+        std::vector<StagedFile> sceneOnly;
+        stageSceneSnapshot(scene, sceneOnly);
+        if (!sceneOnly.empty())
+            sceneJson.assign(sceneOnly[0].bytes.begin(), sceneOnly[0].bytes.end());
+    }
+    std::string scriptsJson, modelsJson;
+    {
+        std::vector<StagedFile> discarded;
+        stageDirectoryAndJson("scripts", ".cow", discarded, scriptsJson);
+        stageDirectoryAndJson("models", ".obj", discarded, modelsJson);
+    }
+    {
         auto freshHtml = makeGameHtml(sceneJson, scriptsJson, modelsJson);
-        StagedFile si, sc;
-        si.path = "index.html";    si.bytes = freshHtml;
-        sc.path = "CowEngine.html"; sc.bytes = freshHtml;
+        StagedFile si;
+        si.path = "index.html"; si.bytes = freshHtml;
         staged.push_back(std::move(si));
-        staged.push_back(std::move(sc));
     }
     EmbeddedTemplate_jsDownloadZip(staged, "CowEngineGame.zip");
     r.ok = true;
@@ -445,6 +445,10 @@ GameBuilder::Result GameBuilder::build(Target t, Scene *scene,
     for (std::size_t i = 0; i < count; ++i)
     {
         EmbeddedFile ef = EmbeddedTemplate_fileAt(slice, i);
+        // Skip CowEngine.html from the template — we write a fresh index.html
+        // below (the web target) and native targets don't use HTML at all.
+        if (std::string(ef.relativePath) == "CowEngine.html")
+            continue;
         if (!writeBlob(target / ef.relativePath, ef.data, ef.size, err))
         {
             r.message = err;
@@ -480,15 +484,13 @@ GameBuilder::Result GameBuilder::build(Target t, Scene *scene,
         stageDirectoryAndJson("scripts", ".cow", ignored, scriptsJson);
         stageDirectoryAndJson("models", ".obj", ignored, modelsJson);
     }
-    // Generate a fresh index.html / CowEngine.html from the embedded template with the
-    // current scene baked in. This overwrites whatever HTML the template bundle wrote.
+    // Generate a fresh index.html from the embedded template with the current
+    // scene baked in. Native targets (Linux/Windows) ignore the HTML entirely,
+    // but it costs nothing to write and keeps the web target consistent.
     {
         auto freshHtml = makeGameHtml(sceneJson, scriptsJson, modelsJson);
-        for (auto name : {"index.html", "CowEngine.html"})
-        {
-            std::ofstream f(target / name, std::ios::binary);
-            f.write(reinterpret_cast<const char *>(freshHtml.data()), freshHtml.size());
-        }
+        std::ofstream f(target / "index.html", std::ios::binary);
+        f.write(reinterpret_cast<const char *>(freshHtml.data()), freshHtml.size());
         if (!sceneJson.empty())
             say("Injected scene into index.html");
     }

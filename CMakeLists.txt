@@ -268,6 +268,22 @@ endif()
 
 # Web (Emscripten) target --------------------------------------------------
 if(EMSCRIPTEN)
+    # For Release-style builds, prefer size over speed across every Emscripten
+    # target — Bullet, ImGui, and our own code — so -flto can actually do
+    # whole-program work at link time.
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+        string(REGEX REPLACE "-O[0-9s]" "-Oz" CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_FLAGS_RELEASE}")
+        string(REGEX REPLACE "-O[0-9s]" "-Oz" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+        if(NOT CMAKE_C_FLAGS_RELEASE MATCHES "-Oz")
+            set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_FLAGS_RELEASE} -Oz")
+            set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Oz")
+        endif()
+        if(NOT CMAKE_C_FLAGS_RELEASE MATCHES "-flto")
+            set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_FLAGS_RELEASE} -flto")
+            set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
+        endif()
+    endif()
+
     # Use the same source list for web builds (unified codebase)
     set(WEB_SOURCES ${SOURCES})
 
@@ -285,6 +301,11 @@ if(EMSCRIPTEN)
     set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
     set(BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
     set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
+    # Keep Bullet's archives out of the install tree — they're statically linked
+    # into the wasm; shipping them again as .a / headers wastes ~5MB.
+    set(INSTALL_LIBS OFF CACHE BOOL "" FORCE)
+    set(INSTALL_EXTRA_LIBS OFF CACHE BOOL "" FORCE)
+    set(INSTALL_CMAKE_FILES OFF CACHE BOOL "" FORCE)
 
     FetchContent_Declare(
         bullet_repo
@@ -322,8 +343,18 @@ if(EMSCRIPTEN)
         LinearMath
     )
 
-    # Emscripten linker flags: WebGL2, memory growth and preload assets
-    set(WEB_LINK_FLAGS "-s USE_WEBGL2=1 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s ASSERTIONS=1 -s USE_GLFW=3")
+    # Emscripten linker flags: WebGL2, modest memory cap (4GB was massive
+    # overkill — wasm32 can address up to 4GB, but a real game-in-browser will
+    # OOM the tab long before that). ASSERTIONS off in Release for code size.
+    set(WEB_LINK_FLAGS "-s USE_WEBGL2=1 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=1GB -s USE_GLFW=3 -s ENVIRONMENT=web")
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+        # Skip --closure 1 (ADVANCED mode): our EM_ASM blocks reference browser
+        # globals like localStorage directly, and Closure rewrites them away.
+        # Would need a custom externs file to safely re-enable.
+        list(APPEND WEB_LINK_FLAGS "-s ASSERTIONS=0" "-Oz" "-flto")
+    else()
+        list(APPEND WEB_LINK_FLAGS "-s ASSERTIONS=1")
+    endif()
     # Export ccall (for Module.ccall in EM_ASM) and FS (so Module.FS is available in preRun)
     list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"FS\"]")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scenes@/scenes")
@@ -331,9 +362,20 @@ if(EMSCRIPTEN)
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scripts@/scripts")
     if(NOT BUILD_GAME)
-        # Editor needs help docs and engine asset bundle (fonts/icons/scripts)
+        # Editor needs help docs plus a slim slice of engine_assets. The bundled
+        # JetBrainsMono download has 7.5MB of TTF variants + 2MB of webfonts; we
+        # only load three weights, so list them explicitly. Same idea for icons.
         list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/help.md@/src/help.md")
-        list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/engine_assets@/engine_assets")
+        set(_jb_ttf "${CMAKE_SOURCE_DIR}/engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf")
+        set(_mount "/engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf")
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${_jb_ttf}/JetBrainsMono-Regular.ttf@${_mount}/JetBrainsMono-Regular.ttf")
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${_jb_ttf}/JetBrainsMono-Bold.ttf@${_mount}/JetBrainsMono-Bold.ttf")
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${_jb_ttf}/JetBrainsMono-SemiBold.ttf@${_mount}/JetBrainsMono-SemiBold.ttf")
+        set(_icons "${CMAKE_SOURCE_DIR}/engine_assets/icons/png")
+        set(_imount "/engine_assets/icons/png")
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${_icons}/up-down-left-right-solid-full.png@${_imount}/up-down-left-right-solid-full.png")
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${_icons}/rotate-solid-full.png@${_imount}/rotate-solid-full.png")
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${_icons}/expand-solid-full.png@${_imount}/expand-solid-full.png")
 
         if(EXISTS "${CMAKE_SOURCE_DIR}/dist/game-web")
             list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/dist/game-web@/game_template_web")
@@ -344,10 +386,13 @@ if(EMSCRIPTEN)
 
     # Join flags into a single string and attach to target
     string(JOIN " " WEB_LINK_FLAGS_STR ${WEB_LINK_FLAGS})
+    # Emit only CowEngine.js (+ .wasm + .data) — no Emscripten-generated HTML
+    # shell, since we copy our own index.html below. Avoids shipping two HTML
+    # files with identical contents.
     set_target_properties(CowEngine_web PROPERTIES
         LINK_FLAGS "${WEB_LINK_FLAGS_STR}"
         OUTPUT_NAME "CowEngine"
-        SUFFIX ".html"
+        SUFFIX ".js"
     )
 
     # Build a minimal imgui static library from the fetched repo so we can
@@ -385,7 +430,7 @@ if(EMSCRIPTEN)
     target_include_directories(CowEngine_web PRIVATE ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src)
 
     # Do not attempt to copy shaders at post-build for the web target (preloaded instead)
-    # Copy the appropriate HTML shell into the web output so the page serves our UI as index.html
+    # Copy the appropriate HTML shell into the web output as index.html.
     if(BUILD_GAME)
         set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/GameTemplate.html")
     else()
@@ -393,16 +438,14 @@ if(EMSCRIPTEN)
     endif()
     add_custom_command(TARGET CowEngine_web POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${CUSTOM_SHELL_SOURCE} $<TARGET_FILE_DIR:CowEngine_web>/index.html
-        COMMAND ${CMAKE_COMMAND} -E copy ${CUSTOM_SHELL_SOURCE} $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.html
     )
 
-    # `cmake --install` ships the wasm + data + html shell as a single folder
+    # `cmake --install` ships the wasm + data + index.html as a single folder
     install(FILES
         $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.js
         $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.wasm
         $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.data
         $<TARGET_FILE_DIR:CowEngine_web>/index.html
-        $<TARGET_FILE_DIR:CowEngine_web>/CowEngine.html
         ${CMAKE_SOURCE_DIR}/tools/build/web-instructions.txt
         DESTINATION .
     )

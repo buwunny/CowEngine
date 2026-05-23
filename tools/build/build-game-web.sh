@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the standalone WebAssembly game.
 #
-# Output: dist/game-web/  (CowEngine.html/.js/.wasm/.data + index.html, self-contained — host this folder on any static web server)
+# Output: dist/game-web/  (index.html + CowEngine.js/.wasm/.data, self-contained — host this folder on any static web server)
 #
 # Requires:
 #   - Emscripten SDK activated (source <path-to-emsdk>/emsdk_env.sh)
