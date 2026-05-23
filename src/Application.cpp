@@ -12,6 +12,24 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
+
+// Accumulated mouse delta from mousemove events (pointer-lock path).
+// emscripten_get_mouse_status() returns stale movementX/Y between events,
+// causing the camera to keep rotating after the mouse stops. Instead we
+// subscribe to the event and accumulate here; the game loop consumes and
+// resets each frame.
+static double s_mouseAccumDX = 0.0;
+static double s_mouseAccumDY = 0.0;
+
+static EM_BOOL app_mousemove_callback(int, const EmscriptenMouseEvent *e, void *)
+{
+    if (e)
+    {
+        s_mouseAccumDX += e->movementX;
+        s_mouseAccumDY += e->movementY;
+    }
+    return EM_FALSE; // don't consume — let ImGui's handler still fire
+}
 #endif
 
 Application::Application()
@@ -108,6 +126,9 @@ void Application::init()
 #endif
 
 #ifdef __EMSCRIPTEN__
+    // Register the per-frame mouse-delta accumulator. Registered after ImGui's
+    // backend so both handlers fire; we return EM_FALSE to let it propagate.
+    emscripten_set_mousemove_callback("#canvas", nullptr, EM_TRUE, app_mousemove_callback);
     lastFrame = emscripten_get_now() / 1000.0;
 #else
     lastFrame = glfwGetTime();
@@ -268,18 +289,36 @@ void Application::tick()
             checkSelection();
 
             // process mouse when in editor mode and game view is focused, only if cursor is disabled (e.g. on web)
-            if (editorUI && editorUI->isGameViewInputEnabled() && window->isCursorDisabled())
+            bool cursorNowDisabled = window->isCursorDisabled();
+            if (editorUI && editorUI->isGameViewInputEnabled() && cursorNowDisabled)
             {
 #ifdef __EMSCRIPTEN__
-                EmscriptenMouseEvent mouseState;
-                emscripten_get_mouse_status(&mouseState);
-                editorInput->processMouseDelta(static_cast<float>(mouseState.movementX), static_cast<float>(-mouseState.movementY));
+                // Discard any delta accumulated while the cursor was free so a
+                // fresh right-click doesn't snap the camera to a stale position.
+                if (!prevCursorDisabled)
+                {
+                    s_mouseAccumDX = 0.0;
+                    s_mouseAccumDY = 0.0;
+                }
+                // Consume the delta accumulated by app_mousemove_callback this
+                // frame. Polling emscripten_get_mouse_status() here would return
+                // stale movementX/Y from the last event, making the camera glide
+                // after the mouse stops.
+                float dx = static_cast<float>(s_mouseAccumDX);
+                float dy = static_cast<float>(-s_mouseAccumDY);
+                s_mouseAccumDX = 0.0;
+                s_mouseAccumDY = 0.0;
+                if (dx != 0.0f || dy != 0.0f)
+                    editorInput->processMouseDelta(dx, dy);
 #else
                 double mouseX, mouseY;
                 glfwGetCursorPos(window->getWindow(), &mouseX, &mouseY);
                 editorInput->processMouse(window->getWindow(), mouseX, mouseY);
 #endif
             }
+#ifdef __EMSCRIPTEN__
+            prevCursorDisabled = cursorNowDisabled;
+#endif
         }
     }
     // Resize viewport / compute aspect

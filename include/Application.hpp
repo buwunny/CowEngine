@@ -65,6 +65,7 @@ private:
     // flag to see if we have local storage data to load on startup
     bool hasLocalStorageData = false;
     std::string pendingLocalStorageData;
+    bool prevCursorDisabled = false;
 #endif
 };
 
