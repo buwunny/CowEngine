@@ -3,7 +3,6 @@
 
 #include "Window.hpp"
 #include "Camera.hpp"
-#include "objects/Object.hpp"
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>

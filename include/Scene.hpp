@@ -1,141 +1,136 @@
 #ifndef SCENE_HPP
 #define SCENE_HPP
 
-#include "objects/Object.hpp"
-#include "objects/Cube.hpp"
-#include "objects/Plane.hpp"
-#include "objects/StaticObject.hpp"
-#include "objects/Player.hpp"
-#include "rooms/Room.hpp"
+#include "ecs/Entity.hpp"
+#include "ecs/Components.hpp"
+#include "ecs/EntityHandle.hpp"
 #include "meshes/AssetManager.hpp"
 #include "PhysicsWorld.hpp"
 
 class ScriptHost;
+class Camera;
+class Window;
+class Shader;
 
-#include <vector>
-#include <memory>
-#include <filesystem>
 #include <chrono>
+#include <filesystem>
+#include <memory>
 #include <string>
 
 #include <nlohmann/json.hpp>
 
+// Scene owns the ECS registry, the player entity handle, and ties everything
+// to a PhysicsWorld for body registration. All iteration over entities goes
+// through systems in ecs/systems.
 class Scene
 {
 public:
     Scene() = default;
     ~Scene() = default;
 
+    ecs::Registry &registry() { return reg_; }
+    const ecs::Registry &registry() const { return reg_; }
+
     void populateDefault();
     bool loadFromJSON(const std::string &path);
     bool loadFromString(const std::string &jsonData);
     bool saveToJSON(const std::string &path);
-    bool saveToMemory(std::string &outData);
     void checkReload();
     void forceReload();
 
-    // Mirror script (.cow) and model (.obj) files from the in-memory filesystem
-    // into localStorage so they persist across web page reloads. Snapshotting
-    // models is opt-in because OBJ files can be large.
-    // No-op on non-web builds.
     static void snapshotScriptsToLocalStorage();
     static void snapshotModelsToLocalStorage();
-
-    // Restore scripts and models from localStorage back into the in-memory
-    // filesystem. Call before loading scenes/scripts. No-op on non-web builds.
     static void restoreAssetsFromLocalStorage();
 
-    Object *raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance);
+    // Returns the entity hit by a world-space ray, or NullEntity if nothing hit.
+    ecs::Entity raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance);
 
-    void addPlayer(std::unique_ptr<Player> player, Window *window, PhysicsWorld &physics);
-    Player *getPlayer() { return player.get(); }
-    void removePlayer()
-    {
-        if (player)
-        {
-            if (player->getRigidBody())
-                this->physicsWorld->removeRigidBody(player->getRigidBody());
-            player.reset();
-        }
-    }
-    void addObject(std::unique_ptr<Object> obj);
-    size_t getObjectCount() const { return objects.size(); }
-    Object *getObjectByIndex(size_t index)
-    {
-        if (index >= objects.size())
-            return nullptr;
-        return objects[index].get();
-    }
-    void deleteObject(Object *obj)
-    {
-        if (!obj)
-            return;
-        // Remove from physics world if applicable
-        if (physicsWorld && obj->getRigidBody())
-            physicsWorld->removeRigidBody(obj->getRigidBody());
-        // Remove from objects vector
-        objects.erase(std::remove_if(objects.begin(), objects.end(),
-                                     [obj](const std::unique_ptr<Object> &o)
-                                     { return o.get() == obj; }),
-                      objects.end());
-        // Clear selection if this was the selected object
-        if (selectedObject == obj)
-            selectedObject = nullptr;
-        if (hoveredObject == obj)
-            hoveredObject = nullptr;
-    }
-    void setSelectedObject(Object *obj) { selectedObject = obj; }
-    Object *getSelectedObject() const { return selectedObject; }
-    const std::string &getScenePath() const { return scenePath; }
+    void addPlayer(Camera *camera, const glm::mat4 &model, Window *window, PhysicsWorld &physics);
+    ecs::Entity getPlayerEntity() const { return playerEntity_; }
+    bool hasPlayer() const { return playerEntity_ != ecs::NullEntity && reg_.valid(playerEntity_); }
+    void removePlayer();
 
-    // Global accessor for the active scene (set when a scene registers a player)
+    // Add an already-created entity's rigid body to the physics world (if it
+    // has one). Used by spawn paths that create entities without a physics
+    // world reference.
+    void registerRigidBody(ecs::Entity e);
+
+    // Spawn a fresh entity into the scene + physics world via the appropriate
+    // factory. Returns the new entity (NullEntity on failure).
+    ecs::Entity spawnCube(int size, const glm::mat4 &model, const glm::vec4 &color, float mass = 1.0f);
+    ecs::Entity spawnPlane(float length, float width, const glm::mat4 &model, const glm::vec4 &color, float mass = 0.0f);
+    ecs::Entity spawnStaticFromAsset(const std::string &meshPath, const std::string &meshName,
+                                     const glm::mat4 &model, const glm::vec4 &color, float mass = 1.0f);
+
+    // Create a blank entity carrying only Identity + Transform. Use the
+    // component-ops helpers (ecs::add*) to attach renderable/physics/script
+    // afterwards.
+    ecs::Entity createEmpty(const std::string &name = "Entity",
+                            const glm::mat4 &model = glm::mat4(1.0f));
+
+    // Selection / hover are stored as tag components but mirrored here for
+    // quick lookup in the editor.
+    void setSelectedEntity(ecs::Entity e);
+    ecs::Entity getSelectedEntity() const { return selectedEntity_; }
+    void setHoveredEntity(ecs::Entity e);
+    ecs::Entity getHoveredEntity() const { return hoveredEntity_; }
+
+    const std::string &getScenePath() const { return scenePath_; }
+
     static Scene *getCurrent() { return s_current; }
 
-    void addRigidBodiesToWorld(PhysicsWorld &physics)
-    {
-        for (auto &obj : objects)
-            physics.addRigidBody(obj->getRigidBody());
-        physicsWorld = &physics;
-    }
+    // Register every entity's rigid body with the physics world. Used after
+    // loading a scene from disk (factories don't have a world reference at
+    // load time — we batch-register here).
+    void addRigidBodiesToWorld(PhysicsWorld &physics);
 
-    void update()
-    {
-        for (auto &obj : objects)
-            obj->update();
-        if (player)
-            player->update();
-    }
+    // Run the per-frame physics → transform sync. Replaces Scene::update().
+    void syncFromPhysics();
 
-    // Compile and attach scripts to every object that has a scriptPath. Already-compiled
-    // scripts are left as-is. Returns the number of scripts attached.
     int loadScripts(ScriptHost &host);
-
-    // Reset script state (drop compiled scripts) and force a recompile on next loadScripts.
     void resetScripts();
-
-    // Invoke `on start` on every script. Should be called once when entering testing mode.
     void startScripts(ScriptHost &host);
-
-    // Invoke `on update(dt)` on every script. Should be called per testing-mode tick.
     void updateScripts(ScriptHost &host, float dt);
 
     void render(Window &window, Shader &shader);
-
     void renderTransparent(Window &window, Shader &shader);
-
     void renderFill(Window &window, Shader &shader);
 
+    PhysicsWorld *physicsWorld() { return physicsWorld_; }
+
+    // Destroy an entity, removing its body from physics first.
+    void destroyEntity(ecs::Entity e);
+
+    // Iterate entities. Used by EditorUI to populate the hierarchy panel.
+    // Excludes the player entity to mirror the old `objects` vector — callers
+    // who want it can check getPlayerEntity() separately.
+    template <typename Fn>
+    void forEachEntity(Fn &&fn)
+    {
+        auto view = reg_.view<ecs::Identity>();
+        for (auto e : view)
+        {
+            if (e == playerEntity_)
+                continue;
+            fn(e);
+        }
+    }
+
+    // Convenience handle wrapper.
+    ecs::EntityHandle handle(ecs::Entity e) { return ecs::EntityHandle(&reg_, e); }
+
 private:
-    std::vector<std::unique_ptr<Object>> objects;
-    std::unique_ptr<Player> player;
-    std::string scenePath;
-    std::filesystem::file_time_type lastWriteTime;
-    PhysicsWorld *physicsWorld = nullptr;
-    std::chrono::steady_clock::time_point lastAutoReloadTime = std::chrono::steady_clock::time_point::min();
-    std::chrono::milliseconds reloadDebounce{500};
+    ecs::Registry reg_;
+    ecs::Entity playerEntity_ = ecs::NullEntity;
+    ecs::Entity selectedEntity_ = ecs::NullEntity;
+    ecs::Entity hoveredEntity_ = ecs::NullEntity;
+
+    std::string scenePath_;
+    std::filesystem::file_time_type lastWriteTime_;
+    PhysicsWorld *physicsWorld_ = nullptr;
+    std::chrono::steady_clock::time_point lastAutoReloadTime_ = std::chrono::steady_clock::time_point::min();
+    std::chrono::milliseconds reloadDebounce_{500};
     static Scene *s_current;
-    Object *selectedObject = nullptr;
-    Object *hoveredObject = nullptr;
 };
 
 #endif // SCENE_HPP

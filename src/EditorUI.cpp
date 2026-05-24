@@ -11,10 +11,11 @@
 #if !defined(COWENGINE_GAME)
 #include "GameBuilder.hpp"
 #endif
-#include "objects/Object.hpp"
-#include "objects/Player.hpp"
-#include "objects/StaticObject.hpp"
+#include "ecs/Components.hpp"
+#include "ecs/Factories.hpp"
+#include "ecs/ComponentOps.hpp"
 #include "meshes/AssetManager.hpp"
+#include "meshes/StaticMesh.hpp"
 #include "CodeEditor.hpp"
 #include "ImGuiLayer.hpp"
 #include "script/CowScript.hpp"
@@ -483,7 +484,7 @@ void EditorUI::drawSceneTab(Scene *scene)
     }
 
     // Gizmo overlay only in editor mode with a selection and a camera
-    if (!testingMode && selection.object && cameraRef && hasGameViewport)
+    if (!testingMode && selection.entity != ecs::NullEntity && cameraRef && hasGameViewport)
     {
         if (!selection.hasCache)
             refreshSelectionCache();
@@ -607,9 +608,12 @@ void EditorUI::drawCodeTab(Scene *scene)
     ImGui::SameLine();
     if (ImGui::Button("Open from selection"))
     {
-        if (selection.object && !selection.object->getScriptPath().empty())
+        ecs::Identity *ident = (sceneRef && selection.entity != ecs::NullEntity)
+                                   ? sceneRef->registry().try_get<ecs::Identity>(selection.entity)
+                                   : nullptr;
+        if (ident && !ident->scriptPath.empty())
         {
-            codeEditor->openFile(selection.object->getScriptPath());
+            codeEditor->openFile(ident->scriptPath);
         }
         else
         {
@@ -637,13 +641,15 @@ void EditorUI::drawCodeTab(Scene *scene)
     ImGui::SameLine();
     if(ImGui::Button("Attach to selection"))
     {
-        if (selection.object)
+        if (sceneRef && selection.entity != ecs::NullEntity)
         {
             if (codeEditor->hasActiveBuffer())
             {
                 std::string path = codeEditor->activePath();
-                selection.object->setScriptPath(path);
-                addLog("Attached script to " + selection.object->getName() + ": " + path,
+                auto &ident = sceneRef->registry().get<ecs::Identity>(selection.entity);
+                ident.scriptPath = path;
+                sceneRef->registry().remove<ecs::ScriptComponent>(selection.entity);
+                addLog("Attached script to " + ident.name + ": " + path,
                        ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
             }
             else
@@ -1086,8 +1092,7 @@ void EditorUI::drawSceneHierarchy(Scene *scene)
     ImGui::Text("Scene: %s", path.empty() ? "<unsaved>" : path.c_str());
     if (ImGui::Button("Reload"))
     {
-        setSelection(nullptr);
-        scene->setSelectedObject(nullptr);
+        clearSelection();
         scene->forceReload();
         addLog("Scene reload requested.", ImVec4(0.9f, 0.8f, 0.4f, 1.0f));
     }
@@ -1109,37 +1114,185 @@ void EditorUI::drawSceneHierarchy(Scene *scene)
     hierarchyFilter.Draw("Filter");
     ImGui::Separator();
 
-    if (scene->getPlayer())
+    auto typeName = [](ecs::ShapeKind k) -> const char *
     {
-        Object *player = scene->getPlayer();
-        std::string label = player->getName() + " [" + player->getTypeName() + "]";
-        if (hierarchyFilter.PassFilter(label.c_str()))
+        switch (k)
         {
-            bool selected = selection.object == player;
-            if (ImGui::Selectable(label.c_str(), selected))
-            {
-                setSelection(player);
-            }
+            case ecs::ShapeKind::Cube: return "Cube";
+            case ecs::ShapeKind::Plane: return "Plane";
+            case ecs::ShapeKind::Static: return "StaticObject";
+            case ecs::ShapeKind::Player: return "Player";
         }
-    }
+        return "Entity";
+    };
 
-    const size_t count = scene->getObjectCount();
-    for (size_t i = 0; i < count; ++i)
+    auto drawEntityRow = [&](ecs::Entity e)
     {
-        Object *obj = scene->getObjectByIndex(i);
-        if (!obj)
-            continue;
-        std::string label = obj->getName() + " [" + obj->getTypeName() + "]";
+        auto &reg = scene->registry();
+        auto *ident = reg.try_get<ecs::Identity>(e);
+        auto *sm = reg.try_get<ecs::ShapeMarker>(e);
+        std::string label = (ident ? ident->name : std::string("Entity")) +
+                            " [" + (sm ? typeName(sm->kind) : "Entity") + "]";
         if (!hierarchyFilter.PassFilter(label.c_str()))
-            continue;
-        bool selected = selection.object == obj;
+            return;
+        bool selected = selection.entity == e;
         if (ImGui::Selectable(label.c_str(), selected))
-        {
-            setSelection(obj);
-        }
-    }
+            setSelection(e);
+    };
+
+    if (scene->hasPlayer())
+        drawEntityRow(scene->getPlayerEntity());
+
+    scene->forEachEntity([&](ecs::Entity e) { drawEntityRow(e); });
 
     ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// Inspector component descriptors
+//
+// Each entry knows how to ask "is this component on the entity?", "draw its
+// section in the inspector" (returning false if the user clicked Remove), and
+// "add a default instance to the entity". Adding a new component type to the
+// editor's UI is one new entry in inspectorDescriptors() below.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+    struct ComponentDescriptor
+    {
+        const char *name;
+        // True if the entity currently has this component.
+        std::function<bool(EditorUI &, Scene &, ecs::Entity)> has;
+        // Draw the inspector section. Returns true to keep the component,
+        // false if the user clicked the section's Remove button.
+        std::function<bool(EditorUI &, Scene &, ecs::Entity)> draw;
+        // Attach a default instance. May be null for components that can't
+        // be added through the generic popup (e.g. PlayerController, which
+        // needs camera wiring done by Scene::addPlayer).
+        std::function<void(EditorUI &, Scene &, ecs::Entity)> add;
+    };
+
+    bool drawCollapsingWithRemove(const char *label, bool &requestRemove)
+    {
+        ImGui::PushID(label);
+        bool open = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+        // Right-aligned "X" button on the header row.
+        float btnW = ImGui::GetFrameHeight();
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - btnW - 4.0f);
+        if (ImGui::SmallButton("X"))
+            requestRemove = true;
+        ImGui::PopID();
+        return open;
+    }
+
+    // -- Identity ----------------------------------------------------------
+    bool drawIdentity(EditorUI &, Scene &scene, ecs::Entity e)
+    {
+        auto *ident = scene.registry().try_get<ecs::Identity>(e);
+        if (!ident)
+            return true;
+        char nameBuffer[256] = {};
+        std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", ident->name.c_str());
+        if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer)))
+            ident->name = nameBuffer;
+        ImGui::Text("ID: %d", ident->id);
+        return true; // never removable
+    }
+
+    // -- Transform ---------------------------------------------------------
+    bool drawTransform(EditorUI &ui, Scene &scene, ecs::Entity e)
+    {
+        (void)e; (void)scene;
+        if (ImGui::DragFloat3("Position", &ui.selectionPositionRef().x, 0.1f))
+            ui.applySelectionTransformPublic();
+        if (ImGui::DragFloat3("Rotation", &ui.selectionRotationRef().x, 0.5f))
+            ui.applySelectionTransformPublic();
+        if (ImGui::DragFloat3("Scale", &ui.selectionScaleRef().x, 0.05f, 0.001f, 1000.0f))
+            ui.applySelectionTransformPublic();
+        return true; // never removable
+    }
+
+    // -- Renderable --------------------------------------------------------
+    bool drawRenderable(EditorUI &ui, Scene &scene, ecs::Entity e)
+    {
+        auto *rd = scene.registry().try_get<ecs::Renderable>(e);
+        if (!rd)
+            return true;
+        if (ImGui::ColorEdit4("Color", &ui.selectionColorRef().r))
+            ui.applySelectionColorPublic();
+
+        auto *sm = scene.registry().try_get<ecs::ShapeMarker>(e);
+        if (sm && sm->kind == ecs::ShapeKind::Cube)
+            ImGui::Text("Mesh: Cube (size %d)", sm->cubeSize);
+        else if (sm && sm->kind == ecs::ShapeKind::Plane)
+            ImGui::Text("Mesh: Plane (%.1f x %.1f)", sm->planeLength, sm->planeWidth);
+        else if (sm && sm->kind == ecs::ShapeKind::Static)
+        {
+            ImGui::Text("Mesh: StaticMesh");
+            if (auto *ident = scene.registry().try_get<ecs::Identity>(e))
+            {
+                char meshBuf[256] = {};
+                std::snprintf(meshBuf, sizeof(meshBuf), "%s", ident->meshPath.c_str());
+                if (ImGui::InputText("Path", meshBuf, sizeof(meshBuf)))
+                    ident->meshPath = meshBuf;
+                ImGui::TextDisabled("Reload the scene to apply path changes.");
+            }
+        }
+
+        ImGui::Text("Line width:");
+        ImGui::SameLine();
+        float lw = static_cast<float>(rd->lineWidth);
+        if (ImGui::DragFloat("##linewidth", &lw, 0.1f, 0.1f, 10.0f))
+            rd->lineWidth = lw;
+        return true;
+    }
+
+    // -- Physics -----------------------------------------------------------
+    bool drawPhysics(EditorUI &ui, Scene &scene, ecs::Entity e)
+    {
+        auto *p = scene.registry().try_get<ecs::Physics>(e);
+        if (!p || !p->body)
+            return true;
+        float mass = 0.0f;
+        if (p->body->getInvMass() > 0.0f)
+            mass = 1.0f / p->body->getInvMass();
+        if (ImGui::InputFloat("Mass", &mass, 0.1f, 1.0f))
+            ecs::setMass(*p, mass);
+        btVector3 v = p->body->getLinearVelocity();
+        ImGui::Text("Velocity: %.2f %.2f %.2f", v.getX(), v.getY(), v.getZ());
+        ImGui::Checkbox("Show Collider", &ui.showCollidersRef());
+        return true;
+    }
+
+    // -- Script ------------------------------------------------------------
+    bool drawScript(EditorUI &ui, Scene &scene, ecs::Entity e)
+    {
+        auto *ident = scene.registry().try_get<ecs::Identity>(e);
+        if (!ident)
+            return true;
+        char scriptBuf[256] = {};
+        std::snprintf(scriptBuf, sizeof(scriptBuf), "%s", ident->scriptPath.c_str());
+        if (ImGui::InputText("Path", scriptBuf, sizeof(scriptBuf)))
+        {
+            ident->scriptPath = scriptBuf;
+            scene.registry().remove<ecs::ScriptComponent>(e);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Edit"))
+        {
+            if (ident->scriptPath.empty())
+                ui.addLog("Set a script path first (e.g. scripts/spin.cow).",
+                          ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
+            else
+                ui.openScriptInCodeEditor(ident->scriptPath);
+        }
+        if (scene.registry().all_of<ecs::ScriptComponent>(e))
+            ImGui::TextDisabled("Compiled");
+        else
+            ImGui::TextDisabled("Not yet compiled (Apply in Code tab to compile).");
+        return true;
+    }
 }
 
 void EditorUI::drawInspector(Scene *scene)
@@ -1153,7 +1306,7 @@ void EditorUI::drawInspector(Scene *scene)
         return;
     }
 
-    if (!selection.object)
+    if (selection.entity == ecs::NullEntity || !scene->registry().valid(selection.entity))
     {
         ImGui::TextUnformatted("Select an object to inspect.");
         ImGui::End();
@@ -1163,99 +1316,183 @@ void EditorUI::drawInspector(Scene *scene)
     if (!selection.hasCache)
         refreshSelectionCache();
 
-    ImGui::Text("Type: %s", selection.object->getTypeName());
+    auto &reg = scene->registry();
+    auto *sm = reg.try_get<ecs::ShapeMarker>(selection.entity);
 
-    std::string name = selection.object->getName();
-    char nameBuffer[256] = {};
-    std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", name.c_str());
-    if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer)))
+    const char *typeStr = "Entity";
+    if (sm)
     {
-        selection.object->setName(std::string(nameBuffer));
-    }
-
-    if (ImGui::DragFloat3("Position", &selection.position.x, 0.1f))
-        applySelectionTransform();
-    if (ImGui::DragFloat3("Rotation", &selection.rotation.x, 0.5f))
-        applySelectionTransform();
-    if (ImGui::DragFloat3("Scale", &selection.scale.x, 0.05f, 0.001f, 1000.0f))
-        applySelectionTransform();
-
-    if (ImGui::ColorEdit4("Color", &selection.color.r))
-        applySelectionColor();
-
-    if (selection.object->getRigidBody())
-    {
-        btRigidBody *rb = selection.object->getRigidBody();
-        float mass = 0.0f;
-        if (rb->getInvMass() > 0.0f)
-            mass = 1.0f / rb->getInvMass();
-        btVector3 v = rb->getLinearVelocity();
-        ImGui::Separator();
-        if (ImGui::InputFloat("Mass", &mass, 0.1f, 1.0f))
+        switch (sm->kind)
         {
-            selection.object->setMass(mass);
+            case ecs::ShapeKind::Cube: typeStr = "Cube"; break;
+            case ecs::ShapeKind::Plane: typeStr = "Plane"; break;
+            case ecs::ShapeKind::Static: typeStr = "StaticObject"; break;
+            case ecs::ShapeKind::Player: typeStr = "Player"; break;
         }
-        ImGui::Text("Velocity: %.2f %.2f %.2f", v.getX(), v.getY(), v.getZ());
-        ImGui::Checkbox("Show Collider", &showColliders);
     }
-
+    ImGui::Text("Type: %s", typeStr);
     ImGui::Separator();
-    ImGui::TextUnformatted("Script");
-    {
-        char scriptBuf[256] = {};
-        std::snprintf(scriptBuf, sizeof(scriptBuf), "%s", selection.object->getScriptPath().c_str());
-        if (ImGui::InputText("##scriptPath", scriptBuf, sizeof(scriptBuf)))
-        {
-            selection.object->setScriptPath(scriptBuf);
-            // Drop any previously compiled script so the new path takes effect.
-            selection.object->setScript(nullptr);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Edit"))
-        {
-            std::string path = selection.object->getScriptPath();
-            if (path.empty())
-            {
-                addLog("Set a script path first (e.g. scripts/spin.cow).",
-                       ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
-            }
-            else if (codeEditor)
-            {
-                codeEditor->openFile(path);
-                requestedTab = WorkspaceTab::CodeTab;
-            }
-        }
-    }
 
-    if (std::string(selection.object->getTypeName()) == "StaticObject")
+    struct InspectorEntry
     {
-        ImGui::Separator();
-        ImGui::TextUnformatted("Model");
-        char meshBuf[256] = {};
-        std::snprintf(meshBuf, sizeof(meshBuf), "%s", selection.object->getMeshPath().c_str());
-        if (ImGui::InputText("##meshPath", meshBuf, sizeof(meshBuf)))
-        {
-            selection.object->setMeshPath(meshBuf);
-        }
-        ImGui::TextDisabled("Reload the scene to apply.");
-    }
+        const char *name;
+        bool (*has)(Scene &, ecs::Entity);
+        bool (*draw)(EditorUI &, Scene &, ecs::Entity);
+        void (*remove)(EditorUI &, Scene &, ecs::Entity);
+        bool removable;
+    };
 
-    ImGui::Separator();
-    if (ImGui::Button("Delete"))
+    static const InspectorEntry entries[] = {
+        {"Identity",
+         [](Scene &s, ecs::Entity e) { return s.registry().all_of<ecs::Identity>(e); },
+         &drawIdentity,
+         [](EditorUI &, Scene &, ecs::Entity) {},
+         false},
+        {"Transform",
+         [](Scene &s, ecs::Entity e) { return s.registry().all_of<ecs::Transform>(e); },
+         &drawTransform,
+         [](EditorUI &, Scene &, ecs::Entity) {},
+         false},
+        {"Renderable (Mesh)",
+         [](Scene &s, ecs::Entity e) { return s.registry().all_of<ecs::Renderable>(e); },
+         &drawRenderable,
+         [](EditorUI &, Scene &s, ecs::Entity e) { ecs::removeRenderable(s.registry(), e); },
+         true},
+        {"Physics (Collider + RigidBody)",
+         [](Scene &s, ecs::Entity e) { return s.registry().all_of<ecs::Physics>(e); },
+         &drawPhysics,
+         [](EditorUI &, Scene &s, ecs::Entity e) { ecs::removePhysics(s.registry(), e, s.physicsWorld()); },
+         true},
+        {"Script",
+         [](Scene &s, ecs::Entity e)
+         {
+             auto *id = s.registry().try_get<ecs::Identity>(e);
+             return (id && !id->scriptPath.empty()) || s.registry().all_of<ecs::ScriptComponent>(e);
+         },
+         &drawScript,
+         [](EditorUI &, Scene &s, ecs::Entity e) { ecs::removeScript(s.registry(), e); },
+         true},
+    };
+
+    for (const auto &entry : entries)
     {
-        if (selection.object == scene->getPlayer())
-        {
-            scene->removePlayer();
-        }
+        if (!entry.has(*scene, selection.entity))
+            continue;
+        bool requestRemove = false;
+        bool open;
+        if (entry.removable)
+            open = drawCollapsingWithRemove(entry.name, requestRemove);
         else
         {
-            // Find and remove the object from the scene
-            scene->deleteObject(selection.object);
+            ImGui::PushID(entry.name);
+            open = ImGui::CollapsingHeader(entry.name, ImGuiTreeNodeFlags_DefaultOpen);
+            ImGui::PopID();
         }
-        setSelection(nullptr);
+        if (open)
+        {
+            ImGui::PushID(entry.name);
+            entry.draw(*this, *scene, selection.entity);
+            ImGui::PopID();
+        }
+        if (requestRemove && entry.removable)
+            entry.remove(*this, *scene, selection.entity);
+    }
+
+    ImGui::Separator();
+    drawAddComponentPopup(scene, entries, sizeof(entries) / sizeof(entries[0]));
+
+    ImGui::Separator();
+    if (ImGui::Button("Delete Entity"))
+    {
+        ecs::Entity e = selection.entity;
+        clearSelection();
+        if (e == scene->getPlayerEntity())
+            scene->removePlayer();
+        else
+            scene->destroyEntity(e);
     }
 
     ImGui::End();
+}
+
+void EditorUI::drawAddComponentPopup(Scene *scene, const void *entriesPtr, size_t entryCount)
+{
+    if (ImGui::Button("+ Add Component"))
+        ImGui::OpenPopup("##AddComponent");
+
+    if (!ImGui::BeginPopup("##AddComponent"))
+        return;
+
+    // Re-derive what the entity is missing using the same descriptor table
+    // the inspector uses, so this menu stays in sync automatically.
+    struct InspectorEntry
+    {
+        const char *name;
+        bool (*has)(Scene &, ecs::Entity);
+        bool (*draw)(EditorUI &, Scene &, ecs::Entity);
+        void (*remove)(EditorUI &, Scene &, ecs::Entity);
+        bool removable;
+    };
+    auto *entries = static_cast<const InspectorEntry *>(entriesPtr);
+    auto &reg = scene->registry();
+    ecs::Entity e = selection.entity;
+
+    if (!reg.all_of<ecs::Renderable>(e))
+    {
+        if (ImGui::BeginMenu("Renderable (Mesh)"))
+        {
+            if (ImGui::MenuItem("Cube"))
+                ecs::addRenderableCube(reg, e);
+            if (ImGui::MenuItem("Plane"))
+                ecs::addRenderablePlane(reg, e);
+            if (ImGui::BeginMenu("Static mesh from file"))
+            {
+                if (fileBrowserModels.empty())
+                    ImGui::TextDisabled("(no .obj files found — refresh Files panel)");
+                for (const auto &path : fileBrowserModels)
+                {
+                    if (ImGui::MenuItem(path.c_str()))
+                    {
+                        auto &am = AssetManager::instance();
+                        std::string key = std::filesystem::path(path).stem().string();
+                        auto mesh = am.loadStaticMeshFromOBJ(path, key);
+                        if (mesh)
+                            ecs::addRenderableFromMesh(reg, e, mesh, path);
+                    }
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+    }
+
+    if (!reg.all_of<ecs::Physics>(e))
+    {
+        if (ImGui::BeginMenu("Physics (Collider + RigidBody)"))
+        {
+            if (ImGui::MenuItem("Box collider"))
+                ecs::addBoxCollider(reg, e, scene->physicsWorld());
+            if (ImGui::MenuItem("Sphere collider"))
+                ecs::addSphereCollider(reg, e, scene->physicsWorld());
+            if (ImGui::MenuItem("Capsule collider"))
+                ecs::addCapsuleCollider(reg, e, scene->physicsWorld());
+            if (ImGui::MenuItem("Convex hull from current mesh", nullptr, false,
+                                reg.all_of<ecs::Renderable>(e)))
+                ecs::addConvexHullColliderFromRenderable(reg, e, scene->physicsWorld());
+            ImGui::EndMenu();
+        }
+    }
+
+    auto *ident = reg.try_get<ecs::Identity>(e);
+    bool hasScript = ident && !ident->scriptPath.empty();
+    if (!hasScript && ImGui::MenuItem("Script"))
+        ecs::addScript(reg, e);
+
+    // Suppress unused-variable warnings for non-popup code paths.
+    (void)entries;
+    (void)entryCount;
+
+    ImGui::EndPopup();
 }
 
 void EditorUI::drawStats(Scene *scene, float deltaSeconds, float fps)
@@ -1265,8 +1502,10 @@ void EditorUI::drawStats(Scene *scene, float deltaSeconds, float fps)
     ImGui::Text("Frame: %.2f ms", deltaSeconds * 1000.0f);
     if (scene)
     {
-        ImGui::Text("Objects: %zu", scene->getObjectCount());
-        ImGui::Text("Has Player: %s", scene->getPlayer() ? "Yes" : "No");
+        size_t count = 0;
+        const_cast<Scene *>(scene)->forEachEntity([&](ecs::Entity) { ++count; });
+        ImGui::Text("Entities: %zu", count);
+        ImGui::Text("Has Player: %s", scene->hasPlayer() ? "Yes" : "No");
     }
     ImGui::End();
 }
@@ -1383,23 +1622,16 @@ void EditorUI::spawnStaticObjectFromMesh(Scene *scene, const std::string &meshPa
 {
     if (!scene)
         return;
-    auto &am = AssetManager::instance();
-    // Use the filename stem as the cache key so the same mesh isn't loaded twice.
     std::string key = fs::path(meshPath).stem().string();
-    auto mesh = am.loadStaticMeshFromOBJ(meshPath, key);
-    if (!mesh)
+    ecs::Entity e = scene->spawnStaticFromAsset(meshPath, key,
+                                                glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)),
+                                                glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
+    if (e == ecs::NullEntity)
     {
         addLog("Failed to load mesh: " + meshPath, ImVec4(0.95f, 0.5f, 0.5f, 1.0f));
         return;
     }
-    auto obj = std::make_unique<StaticObject>(
-        mesh, mesh->getVertices().data(), mesh->getVertexCount(),
-        mesh->getIndices().data(), mesh->getIndexCount(), mesh->getFloatsPerVertex(),
-        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)),
-        glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
-    obj->setMeshPath(meshPath);
-    obj->setName(key);
-    scene->addObject(std::move(obj));
+    scene->registry().get<ecs::Identity>(e).name = key;
     addLog("Spawned " + meshPath, ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
 }
 
@@ -1458,7 +1690,7 @@ void EditorUI::drawFileBrowser(Scene *scene)
                 {
         if (scene && scene->loadFromJSON(path))
         {
-            setSelection(nullptr);
+            clearSelection();
             addLog("Loaded scene " + path, ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
             requestedTab = WorkspaceTab::SceneTab;
         }
@@ -1507,6 +1739,14 @@ void EditorUI::drawRuntime(Scene *scene)
 
     ImGui::Separator();
     ImGui::TextUnformatted("Tools");
+    if (ImGui::Button("Spawn Empty Entity"))
+    {
+        ecs::Entity e = scene->createEmpty("Entity",
+                                           glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)));
+        setSelection(e);
+        addLog("Spawned empty entity — use the Inspector's Add Component menu to attach mesh / physics / script.",
+               ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
+    }
     if (ImGui::Button("Spawn Cow"))
         addObjectToScene(scene, "cow");
     if (ImGui::Button("Spawn Cube"))
@@ -1560,40 +1800,63 @@ void EditorUI::setRequestedTab(WorkspaceTab tab)
     requestedTab = tab;
 }
 
-void EditorUI::setSelection(Object *object)
+void EditorUI::setSelection(ecs::Entity entity)
 {
-    if (selection.object == object)
+    if (selection.entity == entity)
         return;
-    sceneRef->setSelectedObject(object);
-    selection.object = object;
+    if (sceneRef)
+        sceneRef->setSelectedEntity(entity);
+    selection.entity = entity;
     selection.hasCache = false;
 }
 
 void EditorUI::refreshSelectionCache()
 {
-    if (!selection.object)
+    if (!sceneRef || selection.entity == ecs::NullEntity)
         return;
-    selection.object->getTransform(selection.position, selection.rotation, selection.scale);
-    selection.color = selection.object->getColor();
+    auto &reg = sceneRef->registry();
+    if (!reg.valid(selection.entity))
+        return;
+    if (auto *t = reg.try_get<ecs::Transform>(selection.entity))
+    {
+        selection.position = glm::vec3(t->position);
+        selection.rotation = glm::vec3(t->rotation);
+        selection.scale = glm::vec3(t->scale);
+    }
+    if (auto *rd = reg.try_get<ecs::Renderable>(selection.entity))
+        selection.color = rd->color;
     selection.hasCache = true;
 }
 
 void EditorUI::applySelectionTransform()
 {
-    if (!selection.object)
+    if (!sceneRef || selection.entity == ecs::NullEntity)
         return;
-    selection.object->setTransform(selection.position, selection.rotation, selection.scale);
-    // After manually moving an object in the editor, Bullet's broadphase AABB cache is stale
-    // (stepSimulation isn't called in editor mode). Update it so raycasts find the new position.
-    if (physicsRef && selection.object->getRigidBody())
-        physicsRef->updateSingleAabb(selection.object->getRigidBody());
+    ecs::applyTransform(sceneRef->registry(), selection.entity,
+                        selection.position, selection.rotation, selection.scale);
+    // Refresh Bullet's broadphase AABB so editor-mode raycasts find the new pose
+    // (stepSimulation isn't called in editor mode).
+    if (physicsRef)
+    {
+        if (auto *p = sceneRef->registry().try_get<ecs::Physics>(selection.entity); p && p->body)
+            physicsRef->updateSingleAabb(p->body.get());
+    }
 }
 
 void EditorUI::applySelectionColor()
 {
-    if (!selection.object)
+    if (!sceneRef || selection.entity == ecs::NullEntity)
         return;
-    selection.object->setColor(selection.color);
+    if (auto *rd = sceneRef->registry().try_get<ecs::Renderable>(selection.entity))
+        rd->color = selection.color;
+}
+
+void EditorUI::openScriptInCodeEditor(const std::string &path)
+{
+    if (path.empty() || !codeEditor)
+        return;
+    codeEditor->openFile(path);
+    requestedTab = WorkspaceTab::CodeTab;
 }
 
 bool EditorUI::isMouseOverGizmo() const
@@ -1628,8 +1891,7 @@ void EditorUI::execCommand(const std::string &commandLine, Scene *scene)
 
     if (commandLine == "reload")
     {
-        setSelection(nullptr);
-        scene->setSelectedObject(nullptr);
+        clearSelection();
         scene->forceReload();
         addLog("Scene reload requested.");
         return;
@@ -1725,34 +1987,31 @@ void EditorUI::addObjectToScene(Scene *scene, const std::string &type)
 
     if (type == "cube")
     {
-        scene->addObject(std::make_unique<Cube>(1, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f));
+        scene->spawnCube(1,
+                         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)),
+                         glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
     }
     else if (type == "plane")
     {
-        scene->addObject(std::make_unique<Plane>(100, 100, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 0.0f));
+        scene->spawnPlane(100, 100,
+                          glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)),
+                          glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 0.0f);
     }
     else if (type == "cow")
     {
-        auto &assetManager = AssetManager::instance();
-        auto cowMesh = assetManager.loadStaticMeshFromOBJ("models/cow.obj", "cow");
-        if (cowMesh)
-        {
-            auto cow = std::make_unique<StaticObject>(cowMesh, cowMesh.get()->getVertices().data(), cowMesh.get()->getVertexCount(), cowMesh.get()->getIndices().data(), cowMesh.get()->getIndexCount(), cowMesh.get()->getFloatsPerVertex(), glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
-            cow.get()->setMeshPath("models/cow.obj");
-            scene->addObject(std::move(cow));
-        }
+        scene->spawnStaticFromAsset("models/cow.obj", "cow",
+                                    glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)),
+                                    glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f);
     }
     else if (type == "tower")
     {
-        auto &assetManager = AssetManager::instance();
-        auto towerMesh = assetManager.loadStaticMeshFromOBJ("models/eiffel_tower.obj", "tower");
-        if (towerMesh)
-        {
-            auto tower = std::make_unique<StaticObject>(towerMesh, towerMesh.get()->getVertices().data(), towerMesh.get()->getVertexCount(), towerMesh.get()->getIndices().data(), towerMesh.get()->getIndexCount(), towerMesh.get()->getFloatsPerVertex(), glm::translate(glm::mat4(0.0f), glm::vec3(0.0f, 0.0f, 0.0f)), glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 0.0f);
-            tower.get()->setTransform(glm::vec3(0.0f), glm::vec3(-90.0f, 0.0f, 0.0f), glm::vec3(0.1f));
-            tower.get()->setMeshPath("models/eiffel_tower.obj");
-            scene->addObject(std::move(tower));
-        }
+        ecs::Entity e = scene->spawnStaticFromAsset(
+            "models/eiffel_tower.obj", "tower",
+            glm::translate(glm::mat4(0.0f), glm::vec3(0.0f, 0.0f, 0.0f)),
+            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f), 0.0f);
+        if (e != ecs::NullEntity)
+            ecs::applyTransform(scene->registry(), e,
+                                glm::vec3(0.0f), glm::vec3(-90.0f, 0.0f, 0.0f), glm::vec3(0.1f));
     }
     scene->saveToJSON("scenes/scene.json");
 }

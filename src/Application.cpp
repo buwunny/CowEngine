@@ -1,6 +1,8 @@
 #include "Application.hpp"
 #include "ImGuiLayer.hpp"
 #include "EditorUI.hpp"
+#include "ecs/Components.hpp"
+#include "ecs/systems/PlayerInputSystem.hpp"
 #include <imgui.h>
 #include <algorithm>
 #include <cstdint>
@@ -88,9 +90,9 @@ void Application::init()
         scene->populateDefault();
     scene->addRigidBodiesToWorld(*physics);
 
-    scene->addPlayer(std::make_unique<Player>(camera, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 10.0f))), window, *physics);
-    if (scene->getPlayer())
-        scene->getPlayer()->setScriptPath("scripts/shoot_cow.cow");
+    scene->addPlayer(camera, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 10.0f)), window, *physics);
+    if (scene->hasPlayer())
+        scene->registry().get<ecs::Identity>(scene->getPlayerEntity()).scriptPath = "scripts/shoot_cow.cow";
 
     // Ensure camera is positioned to match the player's initial transform on web builds
     camera->setPosition(glm::vec3(0.0f, 3.0f, 10.0f));
@@ -177,8 +179,7 @@ void Application::tick()
         scriptHost->setDelta(delta);
         scene->updateScripts(*scriptHost, delta);
 
-        if (scene->getPlayer())
-            scene->getPlayer()->processInput(window, delta, physics);
+        ecs::playerInputSystem(scene->registry(), window, physics, delta);
 
         // Maintain ImGui frame lifecycle (web needs ImGui IO updated for key polling)
         imguiLayer->newFrame();
@@ -194,7 +195,7 @@ void Application::tick()
         shader->setViewMatrix(view);
         shader->setProjectionMatrix(projection);
 
-        scene->update();
+        scene->syncFromPhysics();
         scene->render(*window, *shader);
 
         imguiLayer->render();
@@ -222,14 +223,16 @@ void Application::tick()
     bool testingMode = editorUI && editorUI->isTestingMode();
     if (testingMode != lastTestingMode)
     {
+
+        editorUI->clearSelection();
+        scene->setSelectedEntity(ecs::NullEntity);
+        scene->setHoveredEntity(ecs::NullEntity);
         if (testingMode)
         {
             reloadScripts();
         }
         else
         {
-            editorUI->setSelection(nullptr);
-            scene->setSelectedObject(nullptr);
             scene->forceReload();
             scene->resetScripts();
             // Pointer-lock during testing can cause key-up events to be missed, leaving
@@ -245,8 +248,6 @@ void Application::tick()
         bool r = window->isKeyPressed(GLFW_KEY_R);
         if (r && !lastRPressed)
         {
-            editorUI->setSelection(nullptr);
-            scene->setSelectedObject(nullptr);
             scene->forceReload();
             reloadScripts();
         }
@@ -264,16 +265,14 @@ void Application::tick()
     bool uiCapturing = io.WantCaptureMouse || io.WantCaptureKeyboard;
     bool allowGameInput = editorUI && editorUI->isGameViewInputEnabled();
     bool heiarchyInput = editorUI && editorUI->isHeiarchyInputEnabled();
-    if (testingMode && scene->getPlayer() && (!uiCapturing || allowGameInput))
-        scene->getPlayer()
-            ->processInput(window, delta, physics);
-    // Keep firstMouse reset while cursor is free so any new right-click starts clean
+    if (testingMode && scene->hasPlayer() && (!uiCapturing || allowGameInput))
+        ecs::playerInputSystem(scene->registry(), window, physics, delta);
     if (!window->isCursorDisabled())
     {
         if (editorInput)
             editorInput->resetFirstMouse();
-        if (!testingMode && scene->getPlayer())
-            scene->getPlayer()->resetInputState();
+        if (!testingMode && scene->hasPlayer())
+            ecs::playerResetInputState(scene->registry(), scene->getPlayerEntity());
     }
 
     if (!testingMode && editorInput)
@@ -281,11 +280,15 @@ void Application::tick()
         if (allowGameInput || heiarchyInput)
         {
             // Focus camera on selected object when F is pressed
-            if (window->isKeyPressed(GLFW_KEY_F) && scene->getSelectedObject())
+            ecs::Entity sel = scene->getSelectedEntity();
+            if (window->isKeyPressed(GLFW_KEY_F) && sel != ecs::NullEntity)
             {
-                glm::vec3 targetPos = scene->getSelectedObject()->getModel()[3];
-                glm::vec3 camDir = glm::normalize(camera->getPosition() - targetPos);
-                camera->setPosition(targetPos + camDir * 5.0f);
+                if (auto *t = scene->registry().try_get<ecs::Transform>(sel))
+                {
+                    glm::vec3 targetPos = glm::vec3(t->model[3]);
+                    glm::vec3 camDir = glm::normalize(camera->getPosition() - targetPos);
+                    camera->setPosition(targetPos + camDir * 5.0f);
+                }
             }
         }
         if (allowGameInput)
@@ -411,27 +414,24 @@ void Application::tick()
     shader->setViewMatrix(view);
     shader->setProjectionMatrix(projection);
 
-    scene->update();
+    scene->syncFromPhysics();
     scene->render(*window, *shader);
 
     // Editor-only: draw the selected object's collider as a wireframe overlay
     // so the user can see what the physics shape actually looks like.
-    if (colliderDebug && scene->getSelectedObject() && !testingMode && editorUI && editorUI->isColliderVisualizationEnabled())
+    if (colliderDebug && scene->getSelectedEntity() != ecs::NullEntity && !testingMode && editorUI && editorUI->isColliderVisualizationEnabled())
     {
-        Object *sel = scene->getSelectedObject();
-        btRigidBody *rb = sel->getRigidBody();
-        btCollisionShape *shape = sel->getCollisionShape();
-        if (rb && shape)
+        auto *p = scene->registry().try_get<ecs::Physics>(scene->getSelectedEntity());
+        if (p && p->body && p->shape)
         {
             btTransform trans;
-            if (rb->getMotionState())
-                rb->getMotionState()->getWorldTransform(trans);
+            if (p->body->getMotionState())
+                p->body->getMotionState()->getWorldTransform(trans);
             else
-                trans = rb->getWorldTransform();
+                trans = p->body->getWorldTransform();
 
             colliderDebug->beginFrame();
-            physics->getWorld()->debugDrawObject(trans, shape, btVector3(0.2f, 1.0f, 0.4f));
-            // Draw on top of the mesh so it stays visible even when inside geometry.
+            physics->getWorld()->debugDrawObject(trans, p->shape.get(), btVector3(0.2f, 1.0f, 0.4f));
             glDisable(GL_DEPTH_TEST);
             window->setLineWidth(2.0f);
             colliderDebug->flush(*shader, glm::vec4(0.2f, 1.0f, 0.4f, 1.0f));
@@ -497,40 +497,26 @@ void Application::checkSelection()
                 rayEye.w = 0.0f;  // Direction vector
                 glm::vec3 rayWorld = glm::normalize(glm::vec3(glm::inverse(view) * rayEye));
 
-                // Raycast into the scene
-                Object *hitObject = scene->raycast(camera->getPosition(), rayWorld, 10000.0f);
-                if (hitObject)
+                ecs::Entity hit = scene->raycast(camera->getPosition(), rayWorld, 10000.0f);
+                if (hit != ecs::NullEntity)
                 {
                     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                     {
-                        if (hitObject == scene->getSelectedObject())
+                        if (hit == scene->getSelectedEntity())
                         {
-                            // Only deselect if the mouse click wasn't over the gizmo handles
                             if (!editorUI->isMouseOverGizmo())
-                            {
-                                scene->setSelectedObject(nullptr);
-                                editorUI->setSelection(nullptr);
-                            }
+                                editorUI->clearSelection();
                         }
                         else
                         {
-                            scene->setSelectedObject(hitObject);
-                            editorUI->setSelection(hitObject);
+                            editorUI->setSelection(hit);
                         }
                     }
-                    std::string typeName(hitObject->getTypeName());
                 }
-                else
+                else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                 {
-                    // Only deselect if the mouse click wasn't over the gizmo handles
-                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                    {
-                        if (!editorUI->isMouseOverGizmo())
-                        {
-                            scene->setSelectedObject(nullptr);
-                            editorUI->setSelection(nullptr);
-                        }
-                    }
+                    if (!editorUI->isMouseOverGizmo())
+                        editorUI->clearSelection();
                 }
             }
         }

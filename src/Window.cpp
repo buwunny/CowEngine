@@ -28,9 +28,8 @@ EM_JS(int, js_is_canvas_pointer_locked, (), {
     }
 });
 
-#include "objects/Player.hpp"
-
-static Player *s_player_for_mouse = nullptr;
+static Window::MouseDeltaCallback s_mouseDeltaCallback = nullptr;
+static void *s_mouseDeltaUser = nullptr;
 
 static ImGuiKey glfwKeyToImGuiKey(int key)
 {
@@ -60,18 +59,15 @@ static EM_BOOL em_mousemove_callback(int eventType, const EmscriptenMouseEvent *
 {
     if (!e)
         return EM_FALSE;
-    if (!s_player_for_mouse)
+    if (!s_mouseDeltaCallback)
         return EM_FALSE;
-    // Ignore mouse movement unless the canvas is pointer-locked
     if (!js_is_canvas_pointer_locked())
         return EM_FALSE;
-    // Pointer lock movement provides movementX/movementY deltas; prefer those when available
-    // Scale deltas by device pixel ratio so high-DPI displays produce matching sensitivity
     double dpr = emscripten_get_device_pixel_ratio();
     double jsSens = js_get_mouse_sensitivity();
     float dx = static_cast<float>(e->movementX * dpr * jsSens);
     float dy = static_cast<float>(e->movementY * dpr * jsSens);
-    s_player_for_mouse->processMouseDelta(dx, dy);
+    s_mouseDeltaCallback(s_mouseDeltaUser, dx, dy);
     return EM_TRUE;
 }
 
@@ -284,11 +280,13 @@ bool Window::shouldClose()
 #endif
 }
 
-void Window::setEmscriptenPlayer(Player *p)
+void Window::setEmscriptenMouseDeltaCallback(MouseDeltaCallback cb, void *user)
 {
 #if defined(__EMSCRIPTEN__)
-    s_player_for_mouse = p;
+    s_mouseDeltaCallback = cb;
+    s_mouseDeltaUser = user;
 #else
-    (void)p;
+    (void)cb;
+    (void)user;
 #endif
 }

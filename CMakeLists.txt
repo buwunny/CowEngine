@@ -50,11 +50,12 @@ set(SOURCES
     src/meshes/CircleMesh.cpp
     src/meshes/StaticMesh.cpp
     src/meshes/AssetManager.cpp
-    src/objects/Object.cpp
-    src/objects/Cube.cpp
-    src/objects/StaticObject.cpp
-    src/objects/Plane.cpp
-    src/objects/Player.cpp
+    src/ecs/Factories.cpp
+    src/ecs/ComponentOps.cpp
+    src/ecs/systems/PhysicsSyncSystem.cpp
+    src/ecs/systems/RenderSystem.cpp
+    src/ecs/systems/ScriptSystem.cpp
+    src/ecs/systems/PlayerInputSystem.cpp
     src/Scene.cpp
     src/PhysicsWorld.cpp
     src/Camera.cpp
@@ -120,6 +121,18 @@ if(NOT nlohmann_json_FOUND)
     FetchContent_MakeAvailable(nlohmann_json_repo)
 endif()
 
+# EnTT: header-only ECS. Available via vcpkg on native; FetchContent for web/fallback.
+find_package(EnTT CONFIG QUIET)
+if(NOT EnTT_FOUND)
+    message(STATUS "EnTT package not found; will attempt to fetch via FetchContent")
+    FetchContent_Declare(
+        entt_repo
+        GIT_REPOSITORY https://github.com/skypjack/entt.git
+        GIT_TAG v3.13.2
+    )
+    FetchContent_MakeAvailable(entt_repo)
+endif()
+
 # Link imported targets provided by vcpkg / config packages
 if(NOT EMSCRIPTEN)
     # Native ImGui docking build
@@ -167,6 +180,7 @@ if(NOT EMSCRIPTEN)
         BulletDynamics
         BulletCollision
         LinearMath
+        EnTT::EnTT
     )
     if(BUILD_GAME)
         # Standalone game: no editor, asset paths resolved relative to the exe.
@@ -218,7 +232,8 @@ if(NOT EMSCRIPTEN)
             ${BULLET_INCLUDE_DIRS} /usr/include/bullet ${imguizmo_repo_SOURCE_DIR})
         target_link_libraries(CowEngineGameTpl PRIVATE
             glad::glad glfw glm::glm OpenGL::GL nlohmann_json::nlohmann_json
-            imgui_native imguizmo_native BulletDynamics BulletCollision LinearMath)
+            imgui_native imguizmo_native BulletDynamics BulletCollision LinearMath
+            EnTT::EnTT)
 
         # Stage the game template (exe + assets it needs at runtime) under the
         # build dir. bin2c walks this directory and emits a C++ array per file.
@@ -342,6 +357,7 @@ if(EMSCRIPTEN)
         BulletDynamics
         BulletCollision
         LinearMath
+        EnTT::EnTT
     )
 
     # Emscripten linker flags: WebGL2, modest memory cap (4GB was massive

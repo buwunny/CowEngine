@@ -12,6 +12,7 @@
                 "docking-experimental"
             ]
         },
-        "glad"
+        "glad",
+        "entt"
     ]
 }

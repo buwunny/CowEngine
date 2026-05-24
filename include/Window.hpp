@@ -17,8 +17,6 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 
-class Player; // forward
-
 class Window
 {
 public:
@@ -40,9 +38,9 @@ public:
     bool isKeyPressed(int key);
     bool isCursorDisabled() const { return cursorDisabled; };
     static void framebuffer_size_callback(GLFWwindow *window, int width, int height);
-    // Set the player instance to receive mouse move events on web builds
-    static void setEmscriptenPlayer(Player *p);
     using MouseDeltaCallback = void (*)(void *user, float dx, float dy);
+    // Register a mouse-delta callback for web builds (pointer-lock movementX/Y).
+    // No-op on desktop. Pass nullptr to clear.
     static void setEmscriptenMouseDeltaCallback(MouseDeltaCallback cb, void *user);
 
 private:

@@ -7,10 +7,11 @@
 #include <imgui.h>
 #include <glm/glm.hpp>
 
+#include "ecs/Entity.hpp"
+
 class Scene;
 class Window;
 class PhysicsWorld;
-class Object;
 class Camera;
 class CodeEditor;
 class ScriptHost;
@@ -58,7 +59,8 @@ public:
     bool isColliderVisualizationEnabled() const { return showColliders; }
     float getCameraSpeed() const { return cameraSpeed; }
     void setGameTexture(ImTextureID textureId, float width, float height);
-    void setSelection(Object *object);
+    void setSelection(ecs::Entity entity);
+    void clearSelection() { setSelection(ecs::NullEntity); }
     void setRequestedTab(WorkspaceTab tab);
     void setVisible(bool visible) { showUI = visible; }
     bool isVisible() const { return showUI; }
@@ -66,6 +68,18 @@ public:
     void setCamera(Camera *cam) { cameraRef = cam; }
     GizmoOp getGizmoOp() const { return gizmoOp; }
     bool isMouseOverGizmo() const;
+
+    // Accessors used by the inspector's per-component drawers. They live on
+    // EditorUI rather than as free functions because the drawers run inside
+    // ImGui callbacks and need to mutate the cached SelectionState directly.
+    glm::vec3 &selectionPositionRef() { return selection.position; }
+    glm::vec3 &selectionRotationRef() { return selection.rotation; }
+    glm::vec3 &selectionScaleRef() { return selection.scale; }
+    glm::vec4 &selectionColorRef() { return selection.color; }
+    bool &showCollidersRef() { return showColliders; }
+    void applySelectionTransformPublic() { applySelectionTransform(); }
+    void applySelectionColorPublic() { applySelectionColor(); }
+    void openScriptInCodeEditor(const std::string &path);
 
 private:
     struct ConsoleLine
@@ -76,7 +90,7 @@ private:
 
     struct SelectionState
     {
-        Object *object = nullptr;
+        ecs::Entity entity = ecs::NullEntity;
         glm::vec3 position = glm::vec3(0.0f);
         glm::vec3 rotation = glm::vec3(0.0f);
         glm::vec3 scale = glm::vec3(1.0f);
@@ -94,6 +108,7 @@ private:
     void drawTestingOverlay();
     void drawSceneHierarchy(Scene *scene);
     void drawInspector(Scene *scene);
+    void drawAddComponentPopup(Scene *scene, const void *entriesPtr, size_t entryCount);
     void drawStats(Scene *scene, float deltaSeconds, float fps);
     void drawConsole(Scene *scene);
     void drawRuntime(Scene *scene);
