@@ -737,6 +737,49 @@ void CodeEditor::renderEditor(Buffer &buf)
     if (active_focus)
         handleInput(buf, font, charWidth, lineHeight, origin, region);
 
+    // Right-click context menu (Cut / Copy / Paste / Select All). Place the
+    // cursor at the click target first so the menu acts on the right spot.
+    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+    {
+        ImGui::SetWindowFocus();
+        if (!hasSelection(buf))
+        {
+            int b = mousePosToByte(ImGui::GetMousePos());
+            moveCursorTo(buf, b, false);
+        }
+        ImGui::OpenPopup("##CodeCtx");
+    }
+    if (ImGui::BeginPopup("##CodeCtx"))
+    {
+        bool sel = hasSelection(buf);
+        const char *clip = ImGui::GetClipboardText();
+        bool hasClip = clip && *clip;
+        if (ImGui::MenuItem("Cut", "Ctrl+X", false, sel))
+        {
+            int a = selBegin(buf);
+            int b = selEnd(buf);
+            ImGui::SetClipboardText(std::string(buf.text.data() + a, buf.text.data() + b).c_str());
+            pushUndo(buf, EditKind::Other);
+            deleteSelection(buf);
+            buf.dirty = true;
+        }
+        if (ImGui::MenuItem("Copy", "Ctrl+C", false, sel))
+        {
+            int a = selBegin(buf);
+            int b = selEnd(buf);
+            ImGui::SetClipboardText(std::string(buf.text.data() + a, buf.text.data() + b).c_str());
+        }
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, hasClip))
+            insertText(buf, std::string(clip), EditKind::Other);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Select All", "Ctrl+A"))
+        {
+            buf.selectionAnchor = 0;
+            buf.cursor = (int)buf.text.size();
+        }
+        ImGui::EndPopup();
+    }
+
     ImGui::EndChild();
     ImGui::PopStyleColor();
 }

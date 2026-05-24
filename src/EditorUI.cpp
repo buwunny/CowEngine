@@ -639,7 +639,7 @@ void EditorUI::drawCodeTab(Scene *scene)
         }
     }
     ImGui::SameLine();
-    if(ImGui::Button("Attach to selection"))
+    if (ImGui::Button("Attach to selection"))
     {
         if (sceneRef && selection.entity != ecs::NullEntity)
         {
@@ -1118,12 +1118,34 @@ void EditorUI::drawSceneHierarchy(Scene *scene)
     {
         switch (k)
         {
-            case ecs::ShapeKind::Cube: return "Cube";
-            case ecs::ShapeKind::Plane: return "Plane";
-            case ecs::ShapeKind::Static: return "StaticObject";
-            case ecs::ShapeKind::Player: return "Player";
+        case ecs::ShapeKind::Cube:
+            return "Cube";
+        case ecs::ShapeKind::Plane:
+            return "Plane";
+        case ecs::ShapeKind::Static:
+            return "StaticObject";
+        case ecs::ShapeKind::Player:
+            return "Player";
         }
         return "Entity";
+    };
+
+    auto spawnMenuItems = [&]()
+    {
+        if (ImGui::MenuItem("Empty Entity"))
+        {
+            ecs::Entity ne = scene->createEmpty("Entity",
+                                                glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)));
+            setSelection(ne);
+        }
+        if (ImGui::MenuItem("Cube"))
+            addObjectToScene(scene, "cube");
+        if (ImGui::MenuItem("Plane"))
+            addObjectToScene(scene, "plane");
+        if (ImGui::MenuItem("Cow"))
+            addObjectToScene(scene, "cow");
+        if (ImGui::MenuItem("Eiffel Tower"))
+            addObjectToScene(scene, "tower");
     };
 
     auto drawEntityRow = [&](ecs::Entity e)
@@ -1136,14 +1158,73 @@ void EditorUI::drawSceneHierarchy(Scene *scene)
         if (!hierarchyFilter.PassFilter(label.c_str()))
             return;
         bool selected = selection.entity == e;
+        ImGui::PushID(static_cast<int>(static_cast<uint32_t>(e)));
         if (ImGui::Selectable(label.c_str(), selected))
             setSelection(e);
+
+        // Right-click selects (so the action targets what the user pointed at)
+        // and opens a per-entity context menu.
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+            setSelection(e);
+        if (ImGui::BeginPopupContextItem("##entity_ctx"))
+        {
+            bool isPlayer = (e == scene->getPlayerEntity());
+            if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, !isPlayer))
+            {
+                ecs::Entity dup = duplicateEntity(scene, e);
+                if (dup != ecs::NullEntity)
+                    setSelection(dup);
+            }
+            if (ImGui::MenuItem("Copy", "Ctrl+C", false, !isPlayer))
+                copyEntityToClipboard(scene, e);
+            if (ImGui::MenuItem("Paste", "Ctrl+V", false, entityClipboard.valid))
+            {
+                ecs::Entity p = pasteEntityFromClipboard(scene);
+                if (p != ecs::NullEntity)
+                    setSelection(p);
+            }
+            ImGui::Separator();
+            if (ImGui::BeginMenu("Add New"))
+            {
+                spawnMenuItems();
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete", "Del", false, !isPlayer))
+            {
+                if (selection.entity == e)
+                    clearSelection();
+                scene->destroyEntity(e);
+            }
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
     };
 
     if (scene->hasPlayer())
         drawEntityRow(scene->getPlayerEntity());
 
-    scene->forEachEntity([&](ecs::Entity e) { drawEntityRow(e); });
+    scene->forEachEntity([&](ecs::Entity e)
+                         { drawEntityRow(e); });
+
+    // Context menu for empty space inside the hierarchy window.
+    if (ImGui::BeginPopupContextWindow("##hierarchy_bg_ctx",
+                                       ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+    {
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, entityClipboard.valid))
+        {
+            ecs::Entity p = pasteEntityFromClipboard(scene);
+            if (p != ecs::NullEntity)
+                setSelection(p);
+        }
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Add New"))
+        {
+            spawnMenuItems();
+            ImGui::EndMenu();
+        }
+        ImGui::EndPopup();
+    }
 
     ImGui::End();
 }
@@ -1203,7 +1284,8 @@ namespace
     // -- Transform ---------------------------------------------------------
     bool drawTransform(EditorUI &ui, Scene &scene, ecs::Entity e)
     {
-        (void)e; (void)scene;
+        (void)e;
+        (void)scene;
         if (ImGui::DragFloat3("Position", &ui.selectionPositionRef().x, 0.1f))
             ui.applySelectionTransformPublic();
         if (ImGui::DragFloat3("Rotation", &ui.selectionRotationRef().x, 0.5f))
@@ -1290,7 +1372,7 @@ namespace
         if (scene.registry().all_of<ecs::ScriptComponent>(e))
             ImGui::TextDisabled("Compiled");
         else
-            ImGui::TextDisabled("Not yet compiled (Apply in Code tab to compile).");
+            ImGui::TextDisabled("Not compiled");
         return true;
     }
 }
@@ -1324,10 +1406,18 @@ void EditorUI::drawInspector(Scene *scene)
     {
         switch (sm->kind)
         {
-            case ecs::ShapeKind::Cube: typeStr = "Cube"; break;
-            case ecs::ShapeKind::Plane: typeStr = "Plane"; break;
-            case ecs::ShapeKind::Static: typeStr = "StaticObject"; break;
-            case ecs::ShapeKind::Player: typeStr = "Player"; break;
+        case ecs::ShapeKind::Cube:
+            typeStr = "Cube";
+            break;
+        case ecs::ShapeKind::Plane:
+            typeStr = "Plane";
+            break;
+        case ecs::ShapeKind::Static:
+            typeStr = "StaticObject";
+            break;
+        case ecs::ShapeKind::Player:
+            typeStr = "Player";
+            break;
         }
     }
     ImGui::Text("Type: %s", typeStr);
@@ -1344,24 +1434,30 @@ void EditorUI::drawInspector(Scene *scene)
 
     static const InspectorEntry entries[] = {
         {"Identity",
-         [](Scene &s, ecs::Entity e) { return s.registry().all_of<ecs::Identity>(e); },
+         [](Scene &s, ecs::Entity e)
+         { return s.registry().all_of<ecs::Identity>(e); },
          &drawIdentity,
          [](EditorUI &, Scene &, ecs::Entity) {},
          false},
         {"Transform",
-         [](Scene &s, ecs::Entity e) { return s.registry().all_of<ecs::Transform>(e); },
+         [](Scene &s, ecs::Entity e)
+         { return s.registry().all_of<ecs::Transform>(e); },
          &drawTransform,
          [](EditorUI &, Scene &, ecs::Entity) {},
          false},
         {"Renderable (Mesh)",
-         [](Scene &s, ecs::Entity e) { return s.registry().all_of<ecs::Renderable>(e); },
+         [](Scene &s, ecs::Entity e)
+         { return s.registry().all_of<ecs::Renderable>(e); },
          &drawRenderable,
-         [](EditorUI &, Scene &s, ecs::Entity e) { ecs::removeRenderable(s.registry(), e); },
+         [](EditorUI &, Scene &s, ecs::Entity e)
+         { ecs::removeRenderable(s.registry(), e); },
          true},
         {"Physics (Collider + RigidBody)",
-         [](Scene &s, ecs::Entity e) { return s.registry().all_of<ecs::Physics>(e); },
+         [](Scene &s, ecs::Entity e)
+         { return s.registry().all_of<ecs::Physics>(e); },
          &drawPhysics,
-         [](EditorUI &, Scene &s, ecs::Entity e) { ecs::removePhysics(s.registry(), e, s.physicsWorld()); },
+         [](EditorUI &, Scene &s, ecs::Entity e)
+         { ecs::removePhysics(s.registry(), e, s.physicsWorld()); },
          true},
         {"Script",
          [](Scene &s, ecs::Entity e)
@@ -1370,7 +1466,8 @@ void EditorUI::drawInspector(Scene *scene)
              return (id && !id->scriptPath.empty()) || s.registry().all_of<ecs::ScriptComponent>(e);
          },
          &drawScript,
-         [](EditorUI &, Scene &s, ecs::Entity e) { ecs::removeScript(s.registry(), e); },
+         [](EditorUI &, Scene &s, ecs::Entity e)
+         { ecs::removeScript(s.registry(), e); },
          true},
     };
 
@@ -1503,7 +1600,8 @@ void EditorUI::drawStats(Scene *scene, float deltaSeconds, float fps)
     if (scene)
     {
         size_t count = 0;
-        const_cast<Scene *>(scene)->forEachEntity([&](ecs::Entity) { ++count; });
+        const_cast<Scene *>(scene)->forEachEntity([&](ecs::Entity)
+                                                  { ++count; });
         ImGui::Text("Entities: %zu", count);
         ImGui::Text("Has Player: %s", scene->hasPlayer() ? "Yes" : "No");
     }
@@ -1522,11 +1620,47 @@ void EditorUI::drawConsole(Scene *scene)
     ImGui::Separator();
     ImGui::BeginChild("ConsoleScroll", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), false);
 
-    for (const auto &line : consoleLines)
+    auto copyAllLogs = [&]()
     {
+        std::string all;
+        all.reserve(consoleLines.size() * 32);
+        for (const auto &l : consoleLines)
+        {
+            all += l.text;
+            all.push_back('\n');
+        }
+        ImGui::SetClipboardText(all.c_str());
+    };
+
+    for (size_t i = 0; i < consoleLines.size(); ++i)
+    {
+        const auto &line = consoleLines[i];
+        ImGui::PushID(static_cast<int>(i));
         ImGui::PushStyleColor(ImGuiCol_Text, line.color);
-        ImGui::TextUnformatted(line.text.c_str());
+        ImGui::Selectable(line.text.c_str(), false, ImGuiSelectableFlags_AllowOverlap);
         ImGui::PopStyleColor();
+        if (ImGui::BeginPopupContextItem("##log_line_ctx"))
+        {
+            if (ImGui::MenuItem("Copy Log"))
+                ImGui::SetClipboardText(line.text.c_str());
+            if (ImGui::MenuItem("Copy All Logs"))
+                copyAllLogs();
+            ImGui::Separator();
+            if (ImGui::MenuItem("Clear Console"))
+                consoleLines.clear();
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+    }
+
+    if (ImGui::BeginPopupContextWindow("##console_bg_ctx",
+                                       ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+    {
+        if (ImGui::MenuItem("Copy All Logs", nullptr, false, !consoleLines.empty()))
+            copyAllLogs();
+        if (ImGui::MenuItem("Clear Console", nullptr, false, !consoleLines.empty()))
+            consoleLines.clear();
+        ImGui::EndPopup();
     }
 
     if (scrollToBottom || (autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()))
@@ -1978,6 +2112,121 @@ int EditorUI::consoleTextEditCallback(ImGuiInputTextCallbackData *data)
     }
 
     return 0;
+}
+
+void EditorUI::copyEntityToClipboard(Scene *scene, ecs::Entity e)
+{
+    if (!scene || e == ecs::NullEntity || !scene->registry().valid(e))
+        return;
+    if (e == scene->getPlayerEntity())
+    {
+        addLog("Cannot copy the player entity.", ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
+        return;
+    }
+    auto &reg = scene->registry();
+    EntityClipboard c;
+    c.valid = true;
+    if (auto *id = reg.try_get<ecs::Identity>(e))
+    {
+        c.name = id->name;
+        c.scriptPath = id->scriptPath;
+        c.meshPath = id->meshPath;
+    }
+    if (auto *t = reg.try_get<ecs::Transform>(e))
+    {
+        c.position = glm::vec3(t->position);
+        c.rotation = glm::vec3(t->rotation);
+        c.scale = glm::vec3(t->scale);
+    }
+    if (auto *rd = reg.try_get<ecs::Renderable>(e))
+    {
+        c.hasRenderable = true;
+        c.color = rd->color;
+    }
+    if (auto *sm = reg.try_get<ecs::ShapeMarker>(e))
+    {
+        c.hasShapeMarker = true;
+        c.kind = sm->kind;
+        c.cubeSize = sm->cubeSize;
+        c.planeLength = sm->planeLength;
+        c.planeWidth = sm->planeWidth;
+    }
+    if (auto *p = reg.try_get<ecs::Physics>(e); p && p->body)
+    {
+        c.hasPhysics = true;
+        float invMass = p->body->getInvMass();
+        c.mass = (invMass > 0.f) ? 1.f / invMass : 0.f;
+    }
+    entityClipboard = std::move(c);
+    addLog("Copied entity \"" + entityClipboard.name + "\" to clipboard.",
+           ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
+}
+
+ecs::Entity EditorUI::pasteEntityFromClipboard(Scene *scene, const glm::vec3 &positionOffset)
+{
+    if (!scene || !entityClipboard.valid)
+        return ecs::NullEntity;
+    const auto &c = entityClipboard;
+    glm::vec3 newPos = c.position + positionOffset;
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), newPos);
+
+    ecs::Entity e = ecs::NullEntity;
+    if (c.hasShapeMarker && c.hasRenderable)
+    {
+        switch (c.kind)
+        {
+        case ecs::ShapeKind::Cube:
+            e = scene->spawnCube(c.cubeSize > 0 ? c.cubeSize : 1, model, c.color, c.mass);
+            break;
+        case ecs::ShapeKind::Plane:
+            e = scene->spawnPlane(c.planeLength, c.planeWidth, model, c.color, c.mass);
+            break;
+        case ecs::ShapeKind::Static:
+            if (!c.meshPath.empty())
+            {
+                std::string key = std::filesystem::path(c.meshPath).stem().string();
+                e = scene->spawnStaticFromAsset(c.meshPath, key, model, c.color, c.mass);
+            }
+            break;
+        case ecs::ShapeKind::Player:
+            break;
+        }
+    }
+    if (e == ecs::NullEntity)
+        e = scene->createEmpty(c.name.empty() ? "Entity" : c.name, model);
+
+    if (e == ecs::NullEntity)
+    {
+        addLog("Paste failed.", ImVec4(0.95f, 0.5f, 0.5f, 1.0f));
+        return ecs::NullEntity;
+    }
+
+    if (auto *id = scene->registry().try_get<ecs::Identity>(e))
+    {
+        if (!c.name.empty())
+            id->name = c.name;
+        id->scriptPath = c.scriptPath;
+    }
+
+    ecs::applyTransform(scene->registry(), e, newPos, c.rotation, c.scale);
+    if (physicsRef)
+    {
+        if (auto *p = scene->registry().try_get<ecs::Physics>(e); p && p->body)
+            physicsRef->updateSingleAabb(p->body.get());
+    }
+    addLog("Pasted entity \"" + c.name + "\".", ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
+    return e;
+}
+
+ecs::Entity EditorUI::duplicateEntity(Scene *scene, ecs::Entity e)
+{
+    if (!scene || e == ecs::NullEntity)
+        return ecs::NullEntity;
+    EntityClipboard saved = entityClipboard;
+    copyEntityToClipboard(scene, e);
+    ecs::Entity created = pasteEntityFromClipboard(scene);
+    entityClipboard = saved;
+    return created;
 }
 
 void EditorUI::addObjectToScene(Scene *scene, const std::string &type)

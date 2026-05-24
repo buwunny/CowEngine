@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 
 #include "ecs/Entity.hpp"
+#include "ecs/Components.hpp"
 
 class Scene;
 class Window;
@@ -146,6 +147,34 @@ private:
     WorkspaceTab lastDrawnWorkspaceTab = WorkspaceTab::None;
 
     SelectionState selection;
+
+    // Snapshot of an entity captured by "Copy" in the hierarchy. Paste/duplicate
+    // re-spawns through the same factory used by the original kind, then
+    // re-applies transform/color/script. Player entities are not copied.
+    struct EntityClipboard
+    {
+        bool valid = false;
+        bool hasShapeMarker = false;
+        ecs::ShapeKind kind = ecs::ShapeKind::Static;
+        int cubeSize = 1;
+        float planeLength = 10.f;
+        float planeWidth = 10.f;
+        std::string name;
+        std::string meshPath;
+        std::string scriptPath;
+        glm::vec3 position{0.f};
+        glm::vec3 rotation{0.f};
+        glm::vec3 scale{1.f};
+        glm::vec4 color{1.f};
+        bool hasRenderable = false;
+        bool hasPhysics = false;
+        float mass = 0.f;
+    };
+    EntityClipboard entityClipboard;
+
+    void copyEntityToClipboard(Scene *scene, ecs::Entity e);
+    ecs::Entity pasteEntityFromClipboard(Scene *scene, const glm::vec3 &positionOffset = glm::vec3(1.5f, 0.f, 0.f));
+    ecs::Entity duplicateEntity(Scene *scene, ecs::Entity e);
 
     ImGuiTextFilter hierarchyFilter;
 
