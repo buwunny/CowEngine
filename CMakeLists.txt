@@ -64,6 +64,14 @@ set(SOURCES
     src/Application.cpp
     src/ColliderDebugDrawer.cpp
     src/EditorUI.cpp
+    src/editor/EditorContext.cpp
+    src/editor/panels/WorkspacePanel.cpp
+    src/editor/panels/HierarchyPanel.cpp
+    src/editor/panels/InspectorPanel.cpp
+    src/editor/panels/ConsolePanel.cpp
+    src/editor/panels/StatsPanel.cpp
+    src/editor/panels/RuntimePanel.cpp
+    src/editor/panels/FileBrowserPanel.cpp
     src/CodeEditor.cpp
     src/script/CowScript.cpp
     src/script/ScriptHost.cpp

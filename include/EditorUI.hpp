@@ -1,14 +1,12 @@
 #ifndef EDITOR_UI_HPP
 #define EDITOR_UI_HPP
 
-#include <string>
-#include <vector>
 #include <memory>
+#include <string>
 #include <imgui.h>
-#include <glm/glm.hpp>
 
 #include "ecs/Entity.hpp"
-#include "ecs/Components.hpp"
+#include "editor/EditorContext.hpp"
 
 class Scene;
 class Window;
@@ -17,207 +15,79 @@ class Camera;
 class CodeEditor;
 class ScriptHost;
 
+namespace editor
+{
+    class WorkspacePanel;
+    class HierarchyPanel;
+    class InspectorPanel;
+    class ConsolePanel;
+    class StatsPanel;
+    class RuntimePanel;
+    class FileBrowserPanel;
+}
+
+// Thin coordinator that owns the editor's panels and shared Context. Most of
+// the editor's behavior lives in individual panels under include/editor/panels.
 class EditorUI
 {
 public:
-    enum class GizmoOp
-    {
-        Translate,
-        Rotate,
-        Scale
-    };
+    using GizmoOp = editor::GizmoOp;
     enum WorkspaceTab
     {
-        None = -1,
-        SceneTab,
-        CodeTab,
-        HelpTab
-    };
-
-public:
-    struct HelpSection
-    {
-        enum class Kind
-        {
-            Text,
-            Code,
-            Table
-        } kind = Kind::Text;
-        std::string content;
+        None = editor::TabNone,
+        SceneTab = editor::SceneTab,
+        CodeTab = editor::CodeTab,
+        HelpTab = editor::HelpTab,
     };
 
     EditorUI();
     ~EditorUI();
 
     void render(Scene *scene, Window *window, PhysicsWorld *physics, float deltaSeconds, float fps);
-    void setScriptHost(ScriptHost *host) { scriptHostRef = host; }
-    CodeEditor *getCodeEditor() { return codeEditor.get(); }
-    void addLog(const std::string &text, const ImVec4 &color = ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
+
+    void setScriptHost(ScriptHost *host) { ctx.scriptHost = host; }
+    CodeEditor *getCodeEditor();
+
+    void addLog(const std::string &text, const ImVec4 &color = ImVec4(0.85f, 0.85f, 0.85f, 1.0f))
+    {
+        ctx.addLog(text, color);
+    }
+
     bool getGameViewport(float &x, float &y, float &w, float &h, float &scaleX, float &scaleY) const;
-    bool isTestingMode() const { return testingMode; }
-    bool isGameViewInputEnabled() const { return gameViewInput; }
-    bool isHeiarchyInputEnabled() const { return heiarchyInput; }
-    bool isColliderVisualizationEnabled() const { return showColliders; }
-    float getCameraSpeed() const { return cameraSpeed; }
+    bool isTestingMode() const { return ctx.testingMode; }
+    bool isGameViewInputEnabled() const { return ctx.gameViewInput; }
+    bool isHeiarchyInputEnabled() const { return ctx.heiarchyInput; }
+    bool isColliderVisualizationEnabled() const { return ctx.showColliders; }
+    float getCameraSpeed() const { return ctx.cameraSpeed; }
+
     void setGameTexture(ImTextureID textureId, float width, float height);
-    void setSelection(ecs::Entity entity);
-    void clearSelection() { setSelection(ecs::NullEntity); }
-    void setRequestedTab(WorkspaceTab tab);
+    void setSelection(ecs::Entity entity) { ctx.setSelection(entity); }
+    void clearSelection() { ctx.clearSelection(); }
+    void setRequestedTab(WorkspaceTab tab) { ctx.requestedTab = static_cast<editor::WorkspaceTab>(tab); }
     void setVisible(bool visible) { showUI = visible; }
     bool isVisible() const { return showUI; }
 
-    void setCamera(Camera *cam) { cameraRef = cam; }
-    GizmoOp getGizmoOp() const { return gizmoOp; }
+    void setCamera(Camera *cam) { ctx.camera = cam; }
+    GizmoOp getGizmoOp() const { return ctx.gizmoOp; }
     bool isMouseOverGizmo() const;
 
-    // Accessors used by the inspector's per-component drawers. They live on
-    // EditorUI rather than as free functions because the drawers run inside
-    // ImGui callbacks and need to mutate the cached SelectionState directly.
-    glm::vec3 &selectionPositionRef() { return selection.position; }
-    glm::vec3 &selectionRotationRef() { return selection.rotation; }
-    glm::vec3 &selectionScaleRef() { return selection.scale; }
-    glm::vec4 &selectionColorRef() { return selection.color; }
-    bool &showCollidersRef() { return showColliders; }
-    void applySelectionTransformPublic() { applySelectionTransform(); }
-    void applySelectionColorPublic() { applySelectionColor(); }
-    void openScriptInCodeEditor(const std::string &path);
+    void openScriptInCodeEditor(const std::string &path) { ctx.openScriptInCodeEditor(path); }
 
 private:
-    struct ConsoleLine
-    {
-        std::string text;
-        ImVec4 color;
-    };
-
-    struct SelectionState
-    {
-        ecs::Entity entity = ecs::NullEntity;
-        glm::vec3 position = glm::vec3(0.0f);
-        glm::vec3 rotation = glm::vec3(0.0f);
-        glm::vec3 scale = glm::vec3(1.0f);
-        glm::vec4 color = glm::vec4(1.0f);
-        bool hasCache = false;
-    };
-
-    void drawMainMenu(Scene *scene);
+    void drawMainMenu();
     void drawDockspace();
-    void drawWorkspace(Scene *scene);
-    void drawSceneTab(Scene *scene);
-    void drawCodeTab(Scene *scene);
-    void drawHelpTab();
-    void drawGizmoToolbar();
-    void drawTestingOverlay();
-    void drawSceneHierarchy(Scene *scene);
-    void drawInspector(Scene *scene);
-    void drawAddComponentPopup(Scene *scene, const void *entriesPtr, size_t entryCount);
-    void drawStats(Scene *scene, float deltaSeconds, float fps);
-    void drawConsole(Scene *scene);
-    void drawRuntime(Scene *scene);
-    void drawFileBrowser(Scene *scene);
-    void refreshFileBrowser();
-    void spawnStaticObjectFromMesh(Scene *scene, const std::string &meshPath);
 
-    void refreshSelectionCache();
-    void applySelectionTransform();
-    void applySelectionColor();
-
-    void execCommand(const std::string &commandLine, Scene *scene);
-    static int consoleTextEditCallback(ImGuiInputTextCallbackData *data);
-
-    void addObjectToScene(Scene *scene, const std::string &type);
-
-    GizmoOp gizmoOp = GizmoOp::Translate;
-    bool gizmoLocal = false;
-    Camera *cameraRef = nullptr;
-    PhysicsWorld *physicsRef = nullptr;
-
+    editor::Context ctx;
     bool showUI = true;
-    bool showHierarchy = true;
-    bool showInspector = true;
-    bool showConsole = true;
-    bool showStats = true;
-    bool showRuntime = true;
-    bool showFiles = true;
-    bool showGameView = true;
-    bool showColliders = true;
-    bool testingMode = false;
     bool dockLayoutBuilt = false;
-    WorkspaceTab activeTab = WorkspaceTab::HelpTab;
-    WorkspaceTab requestedTab = WorkspaceTab::None;
-    WorkspaceTab lastDrawnWorkspaceTab = WorkspaceTab::None;
 
-    SelectionState selection;
-
-    // Snapshot of an entity captured by "Copy" in the hierarchy. Paste/duplicate
-    // re-spawns through the same factory used by the original kind, then
-    // re-applies transform/color/script. Player entities are not copied.
-    struct EntityClipboard
-    {
-        bool valid = false;
-        bool hasShapeMarker = false;
-        ecs::ShapeKind kind = ecs::ShapeKind::Static;
-        int cubeSize = 1;
-        float planeLength = 10.f;
-        float planeWidth = 10.f;
-        std::string name;
-        std::string meshPath;
-        std::string scriptPath;
-        glm::vec3 position{0.f};
-        glm::vec3 rotation{0.f};
-        glm::vec3 scale{1.f};
-        glm::vec4 color{1.f};
-        bool hasRenderable = false;
-        bool hasPhysics = false;
-        float mass = 0.f;
-    };
-    EntityClipboard entityClipboard;
-
-    void copyEntityToClipboard(Scene *scene, ecs::Entity e);
-    ecs::Entity pasteEntityFromClipboard(Scene *scene, const glm::vec3 &positionOffset = glm::vec3(1.5f, 0.f, 0.f));
-    ecs::Entity duplicateEntity(Scene *scene, ecs::Entity e);
-
-    ImGuiTextFilter hierarchyFilter;
-
-    std::vector<ConsoleLine> consoleLines;
-    std::vector<std::string> consoleHistory;
-    int historyPos = -1;
-    char consoleInput[256] = {};
-    bool autoScroll = true;
-    bool scrollToBottom = false;
-    std::string lastSavePath;
-
-    float mouseSensitivity = 1.0f;
-    float cameraSpeed = 5.0f;
-
-    float gameViewportX = 0.0f;
-    float gameViewportY = 0.0f;
-    float gameViewportW = 0.0f;
-    float gameViewportH = 0.0f;
-    float framebufferScaleX = 1.0f;
-    float framebufferScaleY = 1.0f;
-    bool hasGameViewport = false;
-    bool gameViewInput = false;
-    bool heiarchyInput = false;
-
-    Window *windowRef = nullptr;
-    Scene *sceneRef = nullptr;
-
-    ImTextureID gameTextureId = 0;
-    float gameTextureW = 0.0f;
-    float gameTextureH = 0.0f;
-
-    std::unique_ptr<CodeEditor> codeEditor;
-    ScriptHost *scriptHostRef = nullptr;
-    char newScriptName[128] = "scripts/new_script.cow";
-
-    std::vector<HelpSection> helpSections;
-    bool helpMarkdownLoaded = false;
-
-    std::vector<std::string> fileBrowserScripts;
-    std::vector<std::string> fileBrowserModels;
-    std::vector<std::string> fileBrowserScenes;
-    bool fileBrowserLoaded = false;
-    ImGuiTextFilter fileBrowserFilter;
+    std::unique_ptr<editor::WorkspacePanel> workspacePanel;
+    std::unique_ptr<editor::HierarchyPanel> hierarchyPanel;
+    std::unique_ptr<editor::InspectorPanel> inspectorPanel;
+    std::unique_ptr<editor::ConsolePanel> consolePanel;
+    std::unique_ptr<editor::StatsPanel> statsPanel;
+    std::unique_ptr<editor::RuntimePanel> runtimePanel;
+    std::unique_ptr<editor::FileBrowserPanel> fileBrowserPanel;
 };
 
 #endif // EDITOR_UI_HPP
