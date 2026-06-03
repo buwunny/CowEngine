@@ -12,6 +12,7 @@
 #include "editor/panels/StatsPanel.hpp"
 #include "editor/panels/RuntimePanel.hpp"
 #include "editor/panels/FileBrowserPanel.hpp"
+#include "editor/panels/VfxPanel.hpp"
 
 #if !defined(COWENGINE_GAME)
 #include "GameBuilder.hpp"
@@ -30,6 +31,7 @@ EditorUI::EditorUI()
     statsPanel = std::make_unique<editor::StatsPanel>();
     runtimePanel = std::make_unique<editor::RuntimePanel>();
     fileBrowserPanel = std::make_unique<editor::FileBrowserPanel>();
+    vfxPanel = std::make_unique<editor::VfxPanel>();
 
     ctx.codeEditor = workspacePanel->codeEditor();
     if (ctx.codeEditor)
@@ -39,6 +41,10 @@ EditorUI::EditorUI()
     }
 
     ctx.addLog("Editor UI ready. Type 'help' for commands.");
+
+    // Restore VFX settings persisted in the browser's localStorage. No-op on
+    // native builds — settings still reset to defaults each launch there.
+    ctx.loadVfxFromLocalStorage();
 }
 
 EditorUI::~EditorUI() = default;
@@ -128,7 +134,13 @@ void EditorUI::render(Scene *scene, Window *window, PhysicsWorld *physics, float
             runtimePanel->draw(ctx);
         if (ctx.showFiles)
             fileBrowserPanel->draw(ctx);
+        if (ctx.showVfx)
+            vfxPanel->draw(ctx);
     }
+
+    // Persist VFX changes to browser localStorage. The save is dirty-checked
+    // internally so unchanged frames are free.
+    ctx.saveVfxToLocalStorage();
 }
 
 void EditorUI::drawMainMenu()
@@ -152,6 +164,7 @@ void EditorUI::drawMainMenu()
             ImGui::MenuItem("Stats", nullptr, &ctx.showStats);
             ImGui::MenuItem("Runtime", nullptr, &ctx.showRuntime);
             ImGui::MenuItem("Files", nullptr, &ctx.showFiles);
+            ImGui::MenuItem("VFX", nullptr, &ctx.showVfx);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View"))
@@ -240,6 +253,7 @@ void EditorUI::drawDockspace()
         ImGui::DockBuilderDockWindow("Scene Hierarchy", dockLeft);
         ImGui::DockBuilderDockWindow("Inspector", dockRight);
         ImGui::DockBuilderDockWindow("Runtime", dockRightBottom);
+        ImGui::DockBuilderDockWindow("VFX", dockRightBottom);
         ImGui::DockBuilderDockWindow("Debug Console", dockBottom);
         ImGui::DockBuilderDockWindow("Stats", dockBottom);
         ImGui::DockBuilderDockWindow("Files", dockBottom);

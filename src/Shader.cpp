@@ -39,7 +39,7 @@ Shader::Shader(const std::string vertexShaderPath, const std::string fragmentSha
         // Insert precision line after the version directive if present, otherwise at top
         const std::string v300 = "#version 300 es";
         size_t pos = fragmentShaderSourceStr.find(v300);
-        std::string precision = "\nprecision mediump float;\n";
+        std::string precision = "\nprecision highp float;\n";
         if (pos != std::string::npos)
         {
             size_t insertPos = pos + v300.size();
@@ -86,6 +86,31 @@ void Shader::setProjectionMatrix(const glm::mat4 &projection)
 void Shader::setFragmentColor(glm::vec4 color)
 {
     glUniform4f(glGetUniformLocation(ID, "wireframeColor"), color.r, color.g, color.b, color.a);
+}
+
+void Shader::setVec3(const char *name, const glm::vec3 &v)
+{
+    glUniform3f(glGetUniformLocation(ID, name), v.x, v.y, v.z);
+}
+
+void Shader::setVec2(const char *name, const glm::vec2 &v)
+{
+    glUniform2f(glGetUniformLocation(ID, name), v.x, v.y);
+}
+
+void Shader::setFloat(const char *name, float v)
+{
+    glUniform1f(glGetUniformLocation(ID, name), v);
+}
+
+void Shader::setInt(const char *name, int v)
+{
+    glUniform1i(glGetUniformLocation(ID, name), v);
+}
+
+void Shader::setMat4(const char *name, const glm::mat4 &m)
+{
+    glUniformMatrix4fv(glGetUniformLocation(ID, name), 1, GL_FALSE, glm::value_ptr(m));
 }
 
 unsigned int Shader::compileShaders(const char *vertexShaderSource, const char *fragmentShaderSource)

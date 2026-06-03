@@ -26,6 +26,11 @@ public:
     void setViewMatrix(const glm::mat4 &view);
     void setProjectionMatrix(const glm::mat4 &projection);
     void setFragmentColor(glm::vec4 color);
+    void setVec3(const char *name, const glm::vec3 &v);
+    void setVec2(const char *name, const glm::vec2 &v);
+    void setFloat(const char *name, float v);
+    void setInt(const char *name, int v);
+    void setMat4(const char *name, const glm::mat4 &m);
 
 private:
     std::string readFile(const std::string path);

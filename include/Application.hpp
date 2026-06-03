@@ -12,6 +12,8 @@
 #include "InputHandler.hpp"
 #include "ColliderDebugDrawer.hpp"
 #include "script/ScriptHost.hpp"
+#include "PostFX.hpp"
+#include "editor/EditorContext.hpp"
 
 class Application
 {
@@ -48,6 +50,8 @@ private:
     InputHandler *editorInput = nullptr;
     ColliderDebugDrawer *colliderDebug = nullptr;
     ScriptHost *scriptHost = nullptr;
+    PostFX *postfx = nullptr;
+    editor::Context::VFX gameVfx;  // default VFX settings used in standalone game builds
     double scriptTime = 0.0;
 
     unsigned int gameFbo = 0;

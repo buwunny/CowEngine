@@ -24,6 +24,7 @@ namespace editor
     class StatsPanel;
     class RuntimePanel;
     class FileBrowserPanel;
+    class VfxPanel;
 }
 
 // Thin coordinator that owns the editor's panels and shared Context. Most of
@@ -59,6 +60,7 @@ public:
     bool isHeiarchyInputEnabled() const { return ctx.heiarchyInput; }
     bool isColliderVisualizationEnabled() const { return ctx.showColliders; }
     float getCameraSpeed() const { return ctx.cameraSpeed; }
+    const editor::Context::VFX &getVFX() const { return ctx.vfx; }
 
     void setGameTexture(ImTextureID textureId, float width, float height);
     void setSelection(ecs::Entity entity) { ctx.setSelection(entity); }
@@ -88,6 +90,7 @@ private:
     std::unique_ptr<editor::StatsPanel> statsPanel;
     std::unique_ptr<editor::RuntimePanel> runtimePanel;
     std::unique_ptr<editor::FileBrowserPanel> fileBrowserPanel;
+    std::unique_ptr<editor::VfxPanel> vfxPanel;
 };
 
 #endif // EDITOR_UI_HPP

@@ -13,6 +13,14 @@
 
 namespace ecs
 {
+    namespace
+    {
+        bool s_fillEnabled = true;
+    }
+
+    void setWireframeFillEnabled(bool enabled) { s_fillEnabled = enabled; }
+    bool isWireframeFillEnabled() { return s_fillEnabled; }
+
     void renderSystem(Registry &r, Window &window, Shader &shader)
     {
         auto view = r.view<Transform, Renderable>();
@@ -25,19 +33,25 @@ namespace ecs
 
             shader.setModelMatrix(t.model);
 
-            glEnable(GL_POLYGON_OFFSET_FILL);
-            glPolygonOffset(1.0f, 1.0f);
-            window.setPolygonMode(GL_FILL);
+            bool selected = r.all_of<Selected>(e);
+            bool hovered = r.all_of<Hovered>(e);
 
-            glm::vec4 fillColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-            if (r.all_of<Selected>(e))
-                fillColor = glm::vec4(0.10f, 0.10f, 0.14f, 0.95f);
-            else if (r.all_of<Hovered>(e))
-                fillColor = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f);
+            if (s_fillEnabled || selected || hovered)
+            {
+                glEnable(GL_POLYGON_OFFSET_FILL);
+                glPolygonOffset(1.0f, 1.0f);
+                window.setPolygonMode(GL_FILL);
 
-            shader.setFragmentColor(fillColor);
-            rd.mesh->render();
-            glDisable(GL_POLYGON_OFFSET_FILL);
+                glm::vec4 fillColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+                if (selected)
+                    fillColor = glm::vec4(0.10f, 0.10f, 0.14f, 0.95f);
+                else if (hovered)
+                    fillColor = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f);
+
+                shader.setFragmentColor(fillColor);
+                rd.mesh->render();
+                glDisable(GL_POLYGON_OFFSET_FILL);
+            }
 
             window.setPolygonMode(GL_LINE);
             window.setLineWidth(rd.lineWidth);

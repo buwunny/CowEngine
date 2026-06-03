@@ -72,6 +72,8 @@ set(SOURCES
     src/editor/panels/StatsPanel.cpp
     src/editor/panels/RuntimePanel.cpp
     src/editor/panels/FileBrowserPanel.cpp
+    src/editor/panels/VfxPanel.cpp
+    src/PostFX.cpp
     src/CodeEditor.cpp
     src/script/CowScript.cpp
     src/script/ScriptHost.cpp
@@ -381,7 +383,7 @@ if(EMSCRIPTEN)
         list(APPEND WEB_LINK_FLAGS "-s ASSERTIONS=1")
     endif()
     # Export ccall (for Module.ccall in EM_ASM) and FS (so Module.FS is available in preRun)
-    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"FS\"]")
+    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"FS\",\"UTF8ToString\",\"stringToUTF8\",\"lengthBytesUTF8\"]")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scenes@/scenes")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/shaders@/shaders")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")

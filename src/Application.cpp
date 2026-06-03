@@ -3,6 +3,7 @@
 #include "EditorUI.hpp"
 #include "ecs/Components.hpp"
 #include "ecs/systems/PlayerInputSystem.hpp"
+#include "ecs/systems/RenderSystem.hpp"
 #include <imgui.h>
 #include <algorithm>
 #include <cstdint>
@@ -56,6 +57,21 @@ Application::~Application()
     delete editorInput;
     delete colliderDebug;
     delete scriptHost;
+    delete postfx;
+}
+
+// Push VFX uniforms (fog, neon intensity, camera pos) into the main scene
+// shader. Called once per render to avoid redundant setUniform churn inside
+// renderSystem. Safe to call any time after shader->use().
+static void applyVfxToSceneShader(Shader &shader, const glm::vec3 &camPos,
+                                  const editor::Context::VFX &vfx)
+{
+    shader.setVec3("uCamPos", camPos);
+    shader.setInt("uFogEnabled", vfx.fogEnabled ? 1 : 0);
+    shader.setVec3("uFogColor", vfx.fogColor);
+    shader.setFloat("uFogStart", vfx.fogStart);
+    shader.setFloat("uFogEnd", vfx.fogEnd);
+    shader.setFloat("uNeonIntensity", vfx.neonEnabled ? vfx.neonIntensity : 1.0f);
 }
 
 void Application::init()
@@ -98,6 +114,7 @@ void Application::init()
     camera->setPosition(glm::vec3(0.0f, 3.0f, 10.0f));
 
     shader = new Shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
+    postfx = new PostFX();
 
 #ifdef COWENGINE_GAME
     // Game-only build: no editor UI. ImGuiLayer is still constructed because
@@ -184,19 +201,24 @@ void Application::tick()
         // Maintain ImGui frame lifecycle (web needs ImGui IO updated for key polling)
         imguiLayer->newFrame();
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, width, height);
-        glClearColor(0.06f, 0.06f, 0.08f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        shader->use();
         glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 10000.0f);
+
+        postfx->ensure(width, height);
+        postfx->beginSceneCapture();
+        postfx->drawBackground(view, projection, camera->getPosition(), gameVfx);
+
+        glEnable(GL_DEPTH_TEST);
+        ecs::setWireframeFillEnabled(gameVfx.wireframeFill);
+        shader->use();
         shader->setViewMatrix(view);
         shader->setProjectionMatrix(projection);
+        applyVfxToSceneShader(*shader, camera->getPosition(), gameVfx);
 
         scene->syncFromPhysics();
         scene->render(*window, *shader);
+
+        postfx->compositeTo(0, 0, 0, width, height, gameVfx, static_cast<float>(scriptTime));
 
         imguiLayer->render();
         window->update();
@@ -401,18 +423,21 @@ void Application::tick()
         editorUI->setGameTexture(static_cast<ImTextureID>(static_cast<uintptr_t>(gameColor)),
                                  static_cast<float>(gameFbWidth), static_cast<float>(gameFbHeight));
 
-    glBindFramebuffer(GL_FRAMEBUFFER, gameFbo);
-    glViewport(0, 0, gameFbWidth, gameFbHeight);
-    glClearColor(0.08f, 0.08f, 0.11f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    shader->use();
-
     glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)gameFbWidth / (float)gameFbHeight, 0.1f, 10000.0f);
 
+    const editor::Context::VFX &vfx = editorUI ? editorUI->getVFX() : gameVfx;
+
+    postfx->ensure(gameFbWidth, gameFbHeight);
+    postfx->beginSceneCapture();
+    postfx->drawBackground(view, projection, camera->getPosition(), vfx);
+
+    glEnable(GL_DEPTH_TEST);
+    ecs::setWireframeFillEnabled(vfx.wireframeFill);
+    shader->use();
     shader->setViewMatrix(view);
     shader->setProjectionMatrix(projection);
+    applyVfxToSceneShader(*shader, camera->getPosition(), vfx);
 
     scene->syncFromPhysics();
     scene->render(*window, *shader);
@@ -439,6 +464,11 @@ void Application::tick()
             glEnable(GL_DEPTH_TEST);
         }
     }
+
+    // Bloom + tonemap + composite the captured scene into the gameFbo, whose
+    // color attachment is sampled by the ImGui workspace panel.
+    postfx->compositeTo(gameFbo, 0, 0, gameFbWidth, gameFbHeight, vfx,
+                        static_cast<float>(scriptTime));
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);

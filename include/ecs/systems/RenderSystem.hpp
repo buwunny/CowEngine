@@ -13,6 +13,12 @@ namespace ecs
     // wireframe overlay in the entity's color.
     void renderSystem(Registry &r, Window &window, Shader &shader);
 
+    // When false, renderSystem skips the opaque black fill pass and only draws
+    // wireframes — letting the vaporwave sky/grid show through every object.
+    // Defaults to true to preserve the editor's classic look.
+    void setWireframeFillEnabled(bool enabled);
+    bool isWireframeFillEnabled();
+
     // Transparent / fill-only variants of the same iteration, matching the
     // old Scene::renderTransparent / renderFill entry points.
     void renderTransparentSystem(Registry &r, Window &window, Shader &shader);
