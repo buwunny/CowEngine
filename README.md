@@ -1,4 +1,4 @@
-# CowEngine 🐮
+# CowEngine 🐮 (cowengine.com)
 
 CowEngine is a C++ game engine with a native editor and a standalone game build that can target both desktop and WebAssembly.
 
