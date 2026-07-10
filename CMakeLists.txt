@@ -373,7 +373,11 @@ if(EMSCRIPTEN)
     # Emscripten linker flags: WebGL2, modest memory cap (4GB was massive
     # overkill — wasm32 can address up to 4GB, but a real game-in-browser will
     # OOM the tab long before that). ASSERTIONS off in Release for code size.
-    set(WEB_LINK_FLAGS "-s USE_WEBGL2=1 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=1GB -s USE_GLFW=3 -s ENVIRONMENT=web")
+    # Memory is fixed (not growable): a growable WebAssembly.Memory backs its
+    # buffer with a resizable ArrayBuffer, and browsers reject passing views
+    # of those to TextDecoder.decode() (used by emscripten's UTF8ToString),
+    # crashing with "can't be a resizable ArrayBuffer".
+    set(WEB_LINK_FLAGS "-s USE_WEBGL2=1 -s INITIAL_MEMORY=1GB -s USE_GLFW=3 -s ENVIRONMENT=web")
     if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
         # Skip --closure 1 (ADVANCED mode): our EM_ASM blocks reference browser
         # globals like localStorage directly, and Closure rewrites them away.

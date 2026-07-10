@@ -60,6 +60,25 @@ cmake --install build/game-web
 
 Output: `dist/game-web/` (self-contained static site)
 
+## Build: editor (web / WebAssembly)
+
+Activate Emscripten first:
+
+```bash
+source /path/to/emsdk/emsdk_env.sh
+```
+
+Then build:
+
+```bash
+emcmake cmake --preset editor-web
+cmake --build --preset editor-web -j
+
+cmake --install build/editor-web
+```
+
+Output: `dist/editor-web/` (self-contained static site)
+
 ## Full build (native + web game outputs)
 
 The internal build system provides a helper script and a CMake target to build both game outputs.
@@ -102,7 +121,19 @@ Outputs:
 
 Then open http://localhost:8080/
 
+### Editor (web)
+
+`serve-web.sh` only serves `dist/game-web`, so serve `dist/editor-web` directly with Python's built-in server:
+
+```bash
+python3 -m http.server --directory dist/editor-web 8080
+```
+
+Then open http://localhost:8080/
+
+This is also what's deployed to [cowengine.com](https://cowengine.com) via the GitHub Pages workflow.
+
 ## Notes
 
 - If `emcmake` is not available, web builds are skipped by the helper script.
-- The GitHub Pages workflow builds the web target via Emscripten.
+- The GitHub Pages workflow builds both the game and editor web targets via Emscripten, and deploys `dist/editor-web` to GitHub Pages.
