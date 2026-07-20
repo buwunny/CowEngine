@@ -19,7 +19,7 @@
                 "/usr/include/GL",
                 "/usr/include/bullet",
                 "/usr/include/glm",
-                // "${HOME}/emsdk/upstream/emscripten/cache/sysroot/include/"
+                "${HOME}/emsdk/upstream/emscripten/cache/sysroot/include/"
             ],
             "defines": [
                 "IMGUI_ENABLE_DOCKING",

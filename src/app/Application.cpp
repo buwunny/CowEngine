@@ -113,7 +113,7 @@ void Application::init()
 
     scene->addPlayer(camera, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 10.0f)), window, *physics);
     if (scene->hasPlayer())
-        scene->registry().get<ecs::Identity>(scene->getPlayerEntity()).scriptPath = "scripts/shoot_cow.cow";
+        scene->registry().get<ecs::Identity>(scene->getPlayerEntity()).scriptPaths = {"scripts/player_movement.cow", "scripts/shoot_cow.cow"};
 
     // Ensure camera is positioned to match the player's initial transform on web builds
     camera->setPosition(glm::vec3(0.0f, 3.0f, 10.0f));

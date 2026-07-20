@@ -109,27 +109,52 @@ namespace editor
 
         bool drawScript(Context &ctx, ecs::Entity e)
         {
-            auto *ident = ctx.scene->registry().try_get<ecs::Identity>(e);
+            auto &reg = ctx.scene->registry();
+            auto *ident = reg.try_get<ecs::Identity>(e);
             if (!ident)
                 return true;
-            char scriptBuf[256] = {};
-            std::snprintf(scriptBuf, sizeof(scriptBuf), "%s", ident->scriptPath.c_str());
-            if (ImGui::InputText("Path", scriptBuf, sizeof(scriptBuf)))
+
+            // One row per attached script: editable path + Edit + remove.
+            int removeIndex = -1;
+            for (size_t i = 0; i < ident->scriptPaths.size(); ++i)
             {
-                ident->scriptPath = scriptBuf;
-                ctx.scene->registry().remove<ecs::ScriptComponent>(e);
+                ImGui::PushID(static_cast<int>(i));
+                char scriptBuf[256] = {};
+                std::snprintf(scriptBuf, sizeof(scriptBuf), "%s", ident->scriptPaths[i].c_str());
+                ImGui::SetNextItemWidth(-115.0f);
+                if (ImGui::InputText("##path", scriptBuf, sizeof(scriptBuf)))
+                {
+                    ident->scriptPaths[i] = scriptBuf;
+                    reg.remove<ecs::ScriptComponent>(e);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Edit"))
+                {
+                    if (ident->scriptPaths[i].empty())
+                        ctx.addLog("Set a script path first (e.g. scripts/spin.cow).",
+                                   ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
+                    else
+                        ctx.openScriptInCodeEditor(ident->scriptPaths[i]);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("X"))
+                    removeIndex = static_cast<int>(i);
+                ImGui::PopID();
             }
-            ImGui::SameLine();
-            if (ImGui::Button("Edit"))
+            if (removeIndex >= 0)
             {
-                if (ident->scriptPath.empty())
-                    ctx.addLog("Set a script path first (e.g. scripts/spin.cow).",
-                               ImVec4(0.9f, 0.7f, 0.4f, 1.0f));
-                else
-                    ctx.openScriptInCodeEditor(ident->scriptPath);
+                ident->scriptPaths.erase(ident->scriptPaths.begin() + removeIndex);
+                reg.remove<ecs::ScriptComponent>(e);
             }
-            if (ctx.scene->registry().all_of<ecs::ScriptComponent>(e))
-                ImGui::TextDisabled("Compiled");
+
+            if (ImGui::Button("+ Add Script"))
+            {
+                ident->scriptPaths.push_back("scripts/new_script.cow");
+                reg.remove<ecs::ScriptComponent>(e);
+            }
+
+            if (reg.all_of<ecs::ScriptComponent>(e))
+                ImGui::TextDisabled("Compiled (%d script(s))", static_cast<int>(ident->scriptPaths.size()));
             else
                 ImGui::TextDisabled("Not compiled");
             return true;
@@ -175,7 +200,7 @@ namespace editor
              [](Scene &s, ecs::Entity e)
              {
                  auto *id = s.registry().try_get<ecs::Identity>(e);
-                 return (id && !id->scriptPath.empty()) || s.registry().all_of<ecs::ScriptComponent>(e);
+                 return (id && !id->scriptPaths.empty()) || s.registry().all_of<ecs::ScriptComponent>(e);
              },
              &drawScript,
              [](Context &c, ecs::Entity e)
@@ -241,7 +266,7 @@ namespace editor
             }
 
             auto *ident = reg.try_get<ecs::Identity>(e);
-            bool hasScript = ident && !ident->scriptPath.empty();
+            bool hasScript = ident && !ident->scriptPaths.empty();
             if (!hasScript && ImGui::MenuItem("Script"))
                 ecs::addScript(reg, e);
 

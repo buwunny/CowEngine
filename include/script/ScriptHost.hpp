@@ -52,6 +52,7 @@ private:
     cowscript::Value builtinSelfApplyImpulse(const std::vector<cowscript::Value> &args);
     cowscript::Value builtinSelfApplyForce(const std::vector<cowscript::Value> &args);
     cowscript::Value builtinSelfSetVelocity(const std::vector<cowscript::Value> &args);
+    cowscript::Value builtinSelfOnGround(const std::vector<cowscript::Value> &args);
 
     cowscript::Value builtinSpawn(const std::vector<cowscript::Value> &args, const std::string &kind);
 

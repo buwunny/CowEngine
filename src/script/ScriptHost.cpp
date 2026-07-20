@@ -104,6 +104,7 @@ void ScriptHost::bindBuiltins(cowscript::Script &script)
     script.setBuiltin("self_apply_impulse", [this](const std::vector<Value> &a) { return builtinSelfApplyImpulse(a); });
     script.setBuiltin("self_apply_force", [this](const std::vector<Value> &a) { return builtinSelfApplyForce(a); });
     script.setBuiltin("self_set_velocity", [this](const std::vector<Value> &a) { return builtinSelfSetVelocity(a); });
+    script.setBuiltin("self_on_ground", [this](const std::vector<Value> &a) { return builtinSelfOnGround(a); });
 
     script.setBuiltin("spawn_cube", [this](const std::vector<Value> &a) { return builtinSpawn(a, "cube"); });
     script.setBuiltin("spawn_cow", [this](const std::vector<Value> &a) { return builtinSpawn(a, "cow"); });
@@ -260,6 +261,23 @@ Value ScriptHost::builtinSelfSetVelocity(const std::vector<Value> &args)
     return Value::makeNull();
 }
 
+// Raycasts a short distance straight down from the body's centre so a
+// controller script can tell whether it may jump. Mirrors the ground check
+// the native player input system used before movement moved into script land.
+Value ScriptHost::builtinSelfOnGround(const std::vector<Value> &)
+{
+    if (!sceneRef || selfEntity == ecs::NullEntity) return Value::makeBool(false);
+    auto *p = sceneRef->registry().try_get<ecs::Physics>(selfEntity);
+    if (!p || !p->body) return Value::makeBool(false);
+    PhysicsWorld *phys = sceneRef->physicsWorld();
+    if (!phys) return Value::makeBool(false);
+    btVector3 start = p->body->getWorldTransform().getOrigin();
+    btVector3 end = start - btVector3(0.0f, 1.05f, 0.0f);
+    btCollisionWorld::ClosestRayResultCallback cb(start, end);
+    phys->rayTest(start, end, cb);
+    return Value::makeBool(cb.hasHit());
+}
+
 Value ScriptHost::builtinSpawn(const std::vector<Value> &args, const std::string &kind)
 {
     if (!sceneRef) return Value::makeNull();
@@ -373,6 +391,12 @@ namespace
         if (prop == "vx") return Value::makeNumber(lv.x());
         if (prop == "vy") return Value::makeNumber(lv.y());
         if (prop == "vz") return Value::makeNumber(lv.z());
+        // Live body position, post-physics-step (the Transform component is only
+        // synced later in the frame, so this is fresher for camera-follow).
+        const btVector3 &origin = p->body->getWorldTransform().getOrigin();
+        if (prop == "px") return Value::makeNumber(origin.x());
+        if (prop == "py") return Value::makeNumber(origin.y());
+        if (prop == "pz") return Value::makeNumber(origin.z());
         if (prop == "mass") return Value::makeNumber(p->mass);
         throw std::runtime_error("rigidbody has no property '" + prop + "'");
     }
@@ -396,6 +420,7 @@ namespace
         glm::vec3 p = c->getPosition();
         glm::vec3 f = c->getFront();
         glm::vec3 u = c->getUp();
+        glm::vec3 rt = c->getRight();
         if (prop == "x") return Value::makeNumber(p.x);
         if (prop == "y") return Value::makeNumber(p.y);
         if (prop == "z") return Value::makeNumber(p.z);
@@ -405,6 +430,9 @@ namespace
         if (prop == "ux") return Value::makeNumber(u.x);
         if (prop == "uy") return Value::makeNumber(u.y);
         if (prop == "uz") return Value::makeNumber(u.z);
+        if (prop == "rx") return Value::makeNumber(rt.x);
+        if (prop == "ry") return Value::makeNumber(rt.y);
+        if (prop == "rz") return Value::makeNumber(rt.z);
         if (prop == "yaw") return Value::makeNumber(c->getYaw());
         if (prop == "pitch") return Value::makeNumber(c->getPitch());
         throw std::runtime_error("camera has no property '" + prop + "'");

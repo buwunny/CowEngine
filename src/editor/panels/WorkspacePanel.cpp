@@ -7,6 +7,7 @@
 #include "app/CodeEditor.hpp"
 #include "platform/ImGuiLayer.hpp"
 #include "ecs/Components.hpp"
+#include "ecs/ComponentOps.hpp"
 #include "script/CowScript.hpp"
 #include "script/ScriptHost.hpp"
 
@@ -534,9 +535,9 @@ namespace editor
             ecs::Identity *ident = (ctx.scene && ctx.selection.entity != ecs::NullEntity)
                                        ? ctx.scene->registry().try_get<ecs::Identity>(ctx.selection.entity)
                                        : nullptr;
-            if (ident && !ident->scriptPath.empty())
+            if (ident && !ident->scriptPaths.empty())
             {
-                codeEditor_->openFile(ident->scriptPath);
+                codeEditor_->openFile(ident->scriptPaths.front());
             }
             else
             {
@@ -568,8 +569,8 @@ namespace editor
                 {
                     std::string path = codeEditor_->activePath();
                     auto &ident = ctx.scene->registry().get<ecs::Identity>(ctx.selection.entity);
-                    ident.scriptPath = path;
-                    ctx.scene->registry().remove<ecs::ScriptComponent>(ctx.selection.entity);
+                    // Append (dedup) so attaching adds to any scripts already present.
+                    ecs::addScript(ctx.scene->registry(), ctx.selection.entity, path);
                     ctx.addLog("Attached script to " + ident.name + ": " + path,
                                ImVec4(0.7f, 0.95f, 0.7f, 1.0f));
                 }

@@ -195,6 +195,7 @@ These require the object to have a Rigidbody (mass > 0).
 | `self_apply_impulse(x, y, z)` | Apply an instantaneous impulse |
 | `self_apply_force(x, y, z)` | Apply a continuous force (per frame) |
 | `self_set_velocity(x, y, z)` | Set linear velocity directly |
+| `self_on_ground()` | `true` if a short ray straight down hits something (jump/ground check) |
 
 ```
 on update(dt) {
@@ -269,6 +270,7 @@ let y = t.y    // read
 | Property | Type | Description |
 |----------|------|-------------|
 | `.vx` `.vy` `.vz` | number (r/w) | Linear velocity |
+| `.px` `.py` `.pz` | number (r) | Live body position (fresher than the transform mid-frame) |
 | `.mass` | number (r) | Object mass |
 
 ### Camera Handle (`camera()`)
@@ -277,6 +279,7 @@ let y = t.y    // read
 |----------|------|-------------|
 | `.x` `.y` `.z` | number (r/w) | Camera world position |
 | `.fx` `.fy` `.fz` | number (r) | Front (forward) direction vector |
+| `.rx` `.ry` `.rz` | number (r) | Right direction vector |
 | `.ux` `.uy` `.uz` | number (r) | Up direction vector |
 | `.yaw` | number (r) | Horizontal rotation in degrees |
 | `.pitch` | number (r) | Vertical rotation in degrees |

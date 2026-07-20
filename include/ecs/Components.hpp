@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 class Camera;
 
@@ -50,7 +51,9 @@ namespace ecs
     {
         int id = 0;
         std::string name;
-        std::string scriptPath;
+        // Zero or more .cow scripts driving this entity. Every script's
+        // `on start`/`on update` runs, in order, sharing the same `self`.
+        std::vector<std::string> scriptPaths;
         std::string meshPath;
     };
 
@@ -82,9 +85,18 @@ namespace cowscript { class Script; }
 
 namespace ecs
 {
+    // One compiled script plus the path it came from (kept for diagnostics).
+    struct ScriptInstance
+    {
+        std::string path;
+        std::shared_ptr<cowscript::Script> script;
+    };
+
+    // Holds every compiled script attached to an entity, parallel to (but
+    // possibly shorter than, if some failed to compile) Identity::scriptPaths.
     struct ScriptComponent
     {
-        std::shared_ptr<cowscript::Script> script;
+        std::vector<ScriptInstance> scripts;
     };
 
     // Drives WSAD/jump/mouse-look on the entity that has one. The body's

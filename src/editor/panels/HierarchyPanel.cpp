@@ -185,7 +185,7 @@ namespace editor
         if (auto *id = reg.try_get<ecs::Identity>(e))
         {
             c.name = id->name;
-            c.scriptPath = id->scriptPath;
+            c.scriptPaths = id->scriptPaths;
             c.meshPath = id->meshPath;
         }
         if (auto *t = reg.try_get<ecs::Transform>(e))
@@ -262,7 +262,7 @@ namespace editor
         {
             if (!c.name.empty())
                 id->name = c.name;
-            id->scriptPath = c.scriptPath;
+            id->scriptPaths = c.scriptPaths;
         }
 
         ecs::applyTransform(scene->registry(), e, newPos, c.rotation, c.scale);

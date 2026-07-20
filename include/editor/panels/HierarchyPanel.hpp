@@ -2,6 +2,7 @@
 #define EDITOR_HIERARCHY_PANEL_HPP
 
 #include <string>
+#include <vector>
 #include <imgui.h>
 #include <glm/glm.hpp>
 
@@ -36,7 +37,7 @@ namespace editor
             float planeWidth = 10.f;
             std::string name;
             std::string meshPath;
-            std::string scriptPath;
+            std::vector<std::string> scriptPaths;
             glm::vec3 position{0.f};
             glm::vec3 rotation{0.f};
             glm::vec3 scale{1.f};

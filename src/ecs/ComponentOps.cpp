@@ -9,6 +9,7 @@
 
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -192,15 +193,17 @@ namespace ecs
     void addScript(Registry &r, Entity e, const std::string &path)
     {
         auto &ident = r.get_or_emplace<Identity>(e);
-        ident.scriptPath = path;
-        // Drop any compiled bytecode so the ScriptSystem recompiles next load.
+        // Append the script (an entity may carry several); ignore duplicates.
+        if (std::find(ident.scriptPaths.begin(), ident.scriptPaths.end(), path) == ident.scriptPaths.end())
+            ident.scriptPaths.push_back(path);
+        // Drop the compiled scripts so the ScriptSystem recompiles next load.
         r.remove<ScriptComponent>(e);
     }
 
     void removeScript(Registry &r, Entity e)
     {
         if (auto *ident = r.try_get<Identity>(e))
-            ident->scriptPath.clear();
+            ident->scriptPaths.clear();
         r.remove<ScriptComponent>(e);
     }
 

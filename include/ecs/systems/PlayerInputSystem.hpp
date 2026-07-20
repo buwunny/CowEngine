@@ -9,8 +9,10 @@ class PhysicsWorld;
 
 namespace ecs
 {
-    // Drives WSAD/jump/mouse-look for every entity carrying a
-    // PlayerController. Mirrors the original Player::processInput.
+    // Drives mouse-look and the cursor (Tab) toggle for the entity carrying a
+    // PlayerController. WASD/jump/camera-follow are script-driven now (see
+    // scripts/player_movement.cow); this system only handles the mouse-look
+    // plumbing that CowScript can't express.
     void playerInputSystem(Registry &r, Window *window, PhysicsWorld *physics, float deltaTime);
 
     // Mouse callback / mouse-delta accumulation, scoped to the active

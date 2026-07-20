@@ -1,0 +1,89 @@
+// player_movement.cow - first-person controller for the Player entity.
+//
+// Movement is fully script-driven: the engine only feeds mouse-look and the
+// Tab cursor toggle (see PlayerInputSystem). Everything below - WASD relative
+// to where the camera faces, jumping, sprinting, the speed cap and making the
+// camera ride the body - is expressed through the C++ script API:
+//   key(name)          -> is a key held this frame?
+//   camera()           -> handle with .fx/.fz (facing) and .rx/.rz (right)
+//   rigidbody()        -> handle with .vx/.vy/.vz (velocity) and .px/.py/.pz (position)
+//   self_on_ground()   -> raycast ground check, so we only jump when grounded
+
+let speed = 100          // acceleration applied per second while a key is held
+let max_speed = 10       // overall speed cap (sprint doubles it)
+let jump_velocity = 10   // upward velocity on jump
+let air_control = 0.1    // fraction of ground acceleration while airborne
+let eye_height = 1       // camera sits this far above the body centre
+
+on update(dt) {
+    let cam = camera()
+    let rb = rigidbody()
+    if (not cam or not rb) {
+        return
+    }
+
+    // Flatten the camera's facing/right vectors onto the ground plane so that
+    // looking up or down doesn't make WASD launch or dig into the floor.
+    let fl = sqrt(cam.fx * cam.fx + cam.fz * cam.fz)
+    if (fl == 0) { fl = 1 }
+    let fwd_x = cam.fx / fl
+    let fwd_z = cam.fz / fl
+
+    let rl = sqrt(cam.rx * cam.rx + cam.rz * cam.rz)
+    if (rl == 0) { rl = 1 }
+    let right_x = cam.rx / rl
+    let right_z = cam.rz / rl
+
+    let grounded = self_on_ground()
+    let step = speed * dt
+    if (not grounded) {
+        step = step * air_control
+    }
+
+    // Accumulate onto the current velocity so momentum carries between frames.
+    let vx = rb.vx
+    let vy = rb.vy
+    let vz = rb.vz
+
+    if (key("w")) {
+        vx = vx + fwd_x * step
+        vz = vz + fwd_z * step
+    }
+    if (key("s")) {
+        vx = vx - fwd_x * step
+        vz = vz - fwd_z * step
+    }
+    if (key("a")) {
+        vx = vx - right_x * step
+        vz = vz - right_z * step
+    }
+    if (key("d")) {
+        vx = vx + right_x * step
+        vz = vz + right_z * step
+    }
+    if (key("space") and grounded) {
+        vy = jump_velocity
+    }
+
+    // Cap the speed. Holding shift lets you sprint.
+    let cap = max_speed
+    if (key("shift")) {
+        cap = cap * 2
+    }
+    let mag = sqrt(vx * vx + vy * vy + vz * vz)
+    if (mag > cap) {
+        vx = vx / mag * cap
+        vy = vy / mag * cap
+        vz = vz / mag * cap
+    }
+
+    rb.vx = vx
+    rb.vy = vy
+    rb.vz = vz
+
+    // Camera rides one unit above the capsule centre, reading the live body
+    // position so it doesn't lag a frame behind the physics step.
+    cam.x = rb.px
+    cam.y = rb.py + eye_height
+    cam.z = rb.pz
+}

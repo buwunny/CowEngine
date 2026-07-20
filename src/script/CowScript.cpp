@@ -1304,6 +1304,7 @@ namespace cowscript
             "self_sx", "self_sy", "self_sz",
             "self_set_pos", "self_set_rot", "self_set_scale", "self_set_color",
             "self_apply_impulse", "self_apply_force", "self_set_velocity",
+            "self_on_ground",
             "spawn_cube", "spawn_cow", "spawn_plane",
             "self", "transform", "rigidbody", "camera",
             "transform_of", "rigidbody_of",

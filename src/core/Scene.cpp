@@ -241,7 +241,21 @@ bool Scene::loadFromJSON(const std::string &path)
                 glm::vec4 color = parseColor(obj);
                 float mass = obj.value("mass", 0.0f);
                 std::string name = obj.value("name", "");
-                std::string scriptPath = obj.value("script", "");
+                // Accept the new array form ("scripts": [...]) and fall back to
+                // the legacy single-string form ("script": "...").
+                std::vector<std::string> scriptPaths;
+                if (obj.contains("scripts") && obj["scripts"].is_array())
+                {
+                    for (const auto &sp : obj["scripts"])
+                        if (sp.is_string())
+                            scriptPaths.push_back(sp.get<std::string>());
+                }
+                else if (obj.contains("script") && obj["script"].is_string())
+                {
+                    std::string legacy = obj["script"].get<std::string>();
+                    if (!legacy.empty())
+                        scriptPaths.push_back(legacy);
+                }
 
                 ecs::Entity e = ecs::NullEntity;
                 if (type == "Plane")
@@ -282,8 +296,8 @@ bool Scene::loadFromJSON(const std::string &path)
                         ecs::applyTransform(reg_, e, pos, rot, scl);
                     if (!name.empty())
                         reg_.get<ecs::Identity>(e).name = name;
-                    if (!scriptPath.empty())
-                        reg_.get<ecs::Identity>(e).scriptPath = scriptPath;
+                    if (!scriptPaths.empty())
+                        reg_.get<ecs::Identity>(e).scriptPaths = scriptPaths;
                 }
             }
             catch (const std::exception &ex)
@@ -359,8 +373,8 @@ bool Scene::saveToJSON(const std::string &path)
         obj["name"] = ident.name;
         if (auto *p = reg_.try_get<ecs::Physics>(e))
             obj["mass"] = p->mass;
-        if (!ident.scriptPath.empty())
-            obj["script"] = ident.scriptPath;
+        if (!ident.scriptPaths.empty())
+            obj["scripts"] = ident.scriptPaths;
 
         j["objects"].push_back(obj);
     }
