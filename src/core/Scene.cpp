@@ -1,4 +1,4 @@
-#include "Scene.hpp"
+#include "core/Scene.hpp"
 
 #include "ecs/Factories.hpp"
 #include "ecs/ComponentOps.hpp"
@@ -10,8 +10,8 @@
 #include "meshes/AssetManager.hpp"
 #include "script/CowScript.hpp"
 #include "script/ScriptHost.hpp"
-#include "Camera.hpp"
-#include "Window.hpp"
+#include "core/Camera.hpp"
+#include "platform/Window.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/matrix_decompose.hpp>

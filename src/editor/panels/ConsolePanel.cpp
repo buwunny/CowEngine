@@ -1,6 +1,6 @@
 #include "editor/panels/ConsolePanel.hpp"
 
-#include "Scene.hpp"
+#include "core/Scene.hpp"
 
 #include <algorithm>
 #include <cstring>

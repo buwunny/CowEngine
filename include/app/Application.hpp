@@ -2,17 +2,17 @@
 #define APPLICATION_HPP
 
 #include <memory>
-#include "PhysicsWorld.hpp"
-#include "Window.hpp"
-#include "Camera.hpp"
-#include "Scene.hpp"
-#include "Shader.hpp"
-#include "ImGuiLayer.hpp"
-#include "EditorUI.hpp"
-#include "InputHandler.hpp"
-#include "ColliderDebugDrawer.hpp"
+#include "core/PhysicsWorld.hpp"
+#include "platform/Window.hpp"
+#include "core/Camera.hpp"
+#include "core/Scene.hpp"
+#include "render/Shader.hpp"
+#include "platform/ImGuiLayer.hpp"
+#include "app/EditorUI.hpp"
+#include "core/InputHandler.hpp"
+#include "render/ColliderDebugDrawer.hpp"
 #include "script/ScriptHost.hpp"
-#include "PostFX.hpp"
+#include "render/PostFX.hpp"
 #include "editor/EditorContext.hpp"
 
 class Application

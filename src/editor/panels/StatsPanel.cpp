@@ -1,6 +1,6 @@
 #include "editor/panels/StatsPanel.hpp"
 
-#include "Scene.hpp"
+#include "core/Scene.hpp"
 
 #include <cstddef>
 #include <imgui.h>

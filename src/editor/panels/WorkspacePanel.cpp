@@ -1,11 +1,11 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "editor/panels/WorkspacePanel.hpp"
 
-#include "Camera.hpp"
-#include "Scene.hpp"
-#include "Window.hpp"
-#include "CodeEditor.hpp"
-#include "ImGuiLayer.hpp"
+#include "core/Camera.hpp"
+#include "core/Scene.hpp"
+#include "platform/Window.hpp"
+#include "app/CodeEditor.hpp"
+#include "platform/ImGuiLayer.hpp"
 #include "ecs/Components.hpp"
 #include "script/CowScript.hpp"
 #include "script/ScriptHost.hpp"
@@ -623,10 +623,10 @@ namespace editor
         if (!helpMarkdownLoaded)
         {
             std::string raw;
-            std::ifstream in("src/help.md");
+            std::ifstream in("src/templates/help.md");
             if (!in)
             {
-                raw = "Help file not found: src/help.md";
+                raw = "Help file not found: src/templates/help.md";
             }
             else
             {

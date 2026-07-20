@@ -1,4 +1,4 @@
-#include "Window.hpp"
+#include "platform/Window.hpp"
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/html5.h>
 #include <emscripten/emscripten.h>

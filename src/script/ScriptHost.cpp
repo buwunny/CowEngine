@@ -1,9 +1,9 @@
 #include "script/ScriptHost.hpp"
 
-#include "Scene.hpp"
-#include "Window.hpp"
-#include "Camera.hpp"
-#include "PhysicsWorld.hpp"
+#include "core/Scene.hpp"
+#include "platform/Window.hpp"
+#include "core/Camera.hpp"
+#include "core/PhysicsWorld.hpp"
 #include "ecs/Components.hpp"
 #include "ecs/Factories.hpp"
 #include "meshes/AssetManager.hpp"

@@ -1,6 +1,6 @@
-#include "PostFX.hpp"
+#include "render/PostFX.hpp"
 
-#include "Shader.hpp"
+#include "render/Shader.hpp"
 
 #include <glm/gtc/matrix_inverse.hpp>
 

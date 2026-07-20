@@ -43,8 +43,8 @@ if(USE_VCPKG)
 endif()
 
 set(SOURCES
-    src/main.cpp
-    src/Shader.cpp
+    src/app/main.cpp
+    src/render/Shader.cpp
     src/meshes/PlaneMesh.cpp
     src/meshes/CubeMesh.cpp
     src/meshes/CircleMesh.cpp
@@ -56,14 +56,14 @@ set(SOURCES
     src/ecs/systems/RenderSystem.cpp
     src/ecs/systems/ScriptSystem.cpp
     src/ecs/systems/PlayerInputSystem.cpp
-    src/Scene.cpp
-    src/PhysicsWorld.cpp
-    src/Camera.cpp
-    src/InputHandler.cpp
-    src/Window.cpp
-    src/Application.cpp
-    src/ColliderDebugDrawer.cpp
-    src/EditorUI.cpp
+    src/core/Scene.cpp
+    src/core/PhysicsWorld.cpp
+    src/core/Camera.cpp
+    src/core/InputHandler.cpp
+    src/platform/Window.cpp
+    src/app/Application.cpp
+    src/render/ColliderDebugDrawer.cpp
+    src/app/EditorUI.cpp
     src/editor/EditorContext.cpp
     src/editor/panels/WorkspacePanel.cpp
     src/editor/panels/HierarchyPanel.cpp
@@ -73,23 +73,23 @@ set(SOURCES
     src/editor/panels/RuntimePanel.cpp
     src/editor/panels/FileBrowserPanel.cpp
     src/editor/panels/VfxPanel.cpp
-    src/PostFX.cpp
-    src/CodeEditor.cpp
+    src/render/PostFX.cpp
+    src/app/CodeEditor.cpp
     src/script/CowScript.cpp
     src/script/ScriptHost.cpp
 )
 
 # ImGui integration sources (present for both native and web builds)
 list(APPEND SOURCES
-    src/ImGuiLayer.cpp
-    src/imgui_impl_emscripten.cpp
+    src/platform/ImGuiLayer.cpp
+    src/platform/imgui_impl_emscripten.cpp
 
 )
 
 # Editor-only sources: not used by the standalone game build. Anything that
 # touches the Build menu / packaging pipeline lives here.
 set(SOURCES_EDITOR_ONLY
-    src/GameBuilder.cpp
+    src/app/GameBuilder.cpp
 )
 
 if(NOT EMSCRIPTEN)
@@ -315,7 +315,7 @@ if(EMSCRIPTEN)
 
     if(NOT BUILD_GAME)
         list(APPEND WEB_SOURCES ${SOURCES_EDITOR_ONLY})
-        list(APPEND WEB_SOURCES src/EmbeddedTemplate_web.cpp)
+        list(APPEND WEB_SOURCES src/templates/EmbeddedTemplate_web.cpp)
     endif()
 
 
@@ -396,7 +396,7 @@ if(EMSCRIPTEN)
         # Editor needs help docs plus a slim slice of engine_assets. The bundled
         # JetBrainsMono download has 7.5MB of TTF variants + 2MB of webfonts; we
         # only load three weights, so list them explicitly. Same idea for icons.
-        list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/help.md@/src/help.md")
+        list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/templates/help.md@/src/templates/help.md")
         set(_jb_ttf "${CMAKE_SOURCE_DIR}/engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf")
         set(_mount "/engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf")
         list(APPEND WEB_LINK_FLAGS "--preload-file" "${_jb_ttf}/JetBrainsMono-Regular.ttf@${_mount}/JetBrainsMono-Regular.ttf")
@@ -463,9 +463,9 @@ if(EMSCRIPTEN)
     # Do not attempt to copy shaders at post-build for the web target (preloaded instead)
     # Copy the appropriate HTML shell into the web output as index.html.
     if(BUILD_GAME)
-        set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/GameTemplate.html")
+        set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/templates/GameTemplate.html")
     else()
-        set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/EditorTemplate.html")
+        set(CUSTOM_SHELL_SOURCE "${CMAKE_SOURCE_DIR}/src/templates/EditorTemplate.html")
     endif()
     add_custom_command(TARGET CowEngine_web POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${CUSTOM_SHELL_SOURCE} $<TARGET_FILE_DIR:CowEngine_web>/index.html

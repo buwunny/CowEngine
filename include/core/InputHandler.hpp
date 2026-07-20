@@ -1,8 +1,8 @@
 #ifndef INPUTHANDLER_HPP
 #define INPUTHANDLER_HPP
 
-#include "Window.hpp"
-#include "Camera.hpp"
+#include "platform/Window.hpp"
+#include "core/Camera.hpp"
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>

@@ -1,5 +1,5 @@
-#include "ColliderDebugDrawer.hpp"
-#include "Shader.hpp"
+#include "render/ColliderDebugDrawer.hpp"
+#include "render/Shader.hpp"
 
 ColliderDebugDrawer::~ColliderDebugDrawer()
 {

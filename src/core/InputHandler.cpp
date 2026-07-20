@@ -1,4 +1,4 @@
-#include "InputHandler.hpp"
+#include "core/InputHandler.hpp"
 
 InputHandler::InputHandler(Camera *camera)
 {

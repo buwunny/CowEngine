@@ -1,8 +1,8 @@
 #include "editor/EditorContext.hpp"
 
-#include "Scene.hpp"
-#include "PhysicsWorld.hpp"
-#include "CodeEditor.hpp"
+#include "core/Scene.hpp"
+#include "core/PhysicsWorld.hpp"
+#include "app/CodeEditor.hpp"
 #include "ecs/Components.hpp"
 #include "ecs/ComponentOps.hpp"
 #include "ecs/Factories.hpp"

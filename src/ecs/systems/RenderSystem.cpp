@@ -1,8 +1,8 @@
 #include "ecs/systems/RenderSystem.hpp"
 #include "ecs/Components.hpp"
 
-#include "Window.hpp"
-#include "Shader.hpp"
+#include "platform/Window.hpp"
+#include "render/Shader.hpp"
 #include "meshes/Mesh.hpp"
 
 #if defined(__EMSCRIPTEN__)

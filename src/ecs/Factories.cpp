@@ -1,6 +1,6 @@
 #include "ecs/Factories.hpp"
 
-#include "PhysicsWorld.hpp"
+#include "core/PhysicsWorld.hpp"
 #include "meshes/Mesh.hpp"
 #include "meshes/CubeMesh.hpp"
 #include "meshes/PlaneMesh.hpp"

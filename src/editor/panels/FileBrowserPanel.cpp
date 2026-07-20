@@ -1,7 +1,7 @@
 #include "editor/panels/FileBrowserPanel.hpp"
 
-#include "Scene.hpp"
-#include "CodeEditor.hpp"
+#include "core/Scene.hpp"
+#include "app/CodeEditor.hpp"
 
 #include <algorithm>
 #include <cstdio>

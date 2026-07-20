@@ -1,7 +1,7 @@
-#include "CodeEditor.hpp"
+#include "app/CodeEditor.hpp"
 
 #include "script/CowScript.hpp"
-#include "Scene.hpp"
+#include "core/Scene.hpp"
 
 #include <algorithm>
 #include <cctype>

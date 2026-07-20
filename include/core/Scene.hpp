@@ -5,7 +5,7 @@
 #include "ecs/Components.hpp"
 #include "ecs/EntityHandle.hpp"
 #include "meshes/AssetManager.hpp"
-#include "PhysicsWorld.hpp"
+#include "core/PhysicsWorld.hpp"
 
 class ScriptHost;
 class Camera;

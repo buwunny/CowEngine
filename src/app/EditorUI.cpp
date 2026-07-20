@@ -2,9 +2,9 @@
 #ifndef IMGUI_ENABLE_DOCKING
 #define IMGUI_ENABLE_DOCKING
 #endif
-#include "EditorUI.hpp"
+#include "app/EditorUI.hpp"
 
-#include "CodeEditor.hpp"
+#include "app/CodeEditor.hpp"
 #include "editor/panels/WorkspacePanel.hpp"
 #include "editor/panels/HierarchyPanel.hpp"
 #include "editor/panels/InspectorPanel.hpp"
@@ -15,7 +15,7 @@
 #include "editor/panels/VfxPanel.hpp"
 
 #if !defined(COWENGINE_GAME)
-#include "GameBuilder.hpp"
+#include "app/GameBuilder.hpp"
 #endif
 
 #include <imgui.h>

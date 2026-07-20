@@ -1,6 +1,6 @@
-#include "Window.hpp"
-#include "Camera.hpp"
-#include "PhysicsWorld.hpp"
+#include "platform/Window.hpp"
+#include "core/Camera.hpp"
+#include "core/PhysicsWorld.hpp"
 #include "ecs/systems/PlayerInputSystem.hpp"
 #include "ecs/Components.hpp"
 

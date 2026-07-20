@@ -1,5 +1,5 @@
-#include "ImGuiLayer.hpp"
-#include "Window.hpp"
+#include "platform/ImGuiLayer.hpp"
+#include "platform/Window.hpp"
 #include <imgui.h>
 #include <cstdio>
 
@@ -28,7 +28,7 @@ namespace
     }
 }
 #if defined(__EMSCRIPTEN__)
-#include "imgui_impl_emscripten.h"
+#include "platform/imgui_impl_emscripten.h"
 #include "imgui_impl_opengl3.h"
 #else
 #include <backends/imgui_impl_glfw.h>

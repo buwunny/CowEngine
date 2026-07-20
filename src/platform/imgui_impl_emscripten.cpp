@@ -1,5 +1,5 @@
 // Emscripten platform backend for Dear ImGui
-#include "imgui_impl_emscripten.h"
+#include "platform/imgui_impl_emscripten.h"
 #include <imgui.h>
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/html5.h>

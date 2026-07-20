@@ -5,7 +5,7 @@
 // the results. Native slices are always empty (the web editor cannot produce
 // Linux/Windows binaries).
 
-#include "EmbeddedTemplate.hpp"
+#include "app/EmbeddedTemplate.hpp"
 
 #include <cstddef>
 #include <cstdio>

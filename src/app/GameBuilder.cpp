@@ -1,6 +1,6 @@
-#include "GameBuilder.hpp"
-#include "Scene.hpp"
-#include "EmbeddedTemplate.hpp"
+#include "app/GameBuilder.hpp"
+#include "core/Scene.hpp"
+#include "app/EmbeddedTemplate.hpp"
 
 #include <cstdio>
 #include <cstdlib>
