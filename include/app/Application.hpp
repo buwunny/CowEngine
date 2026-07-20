@@ -2,18 +2,25 @@
 #define APPLICATION_HPP
 
 #include <memory>
+#include "core/EngineConfig.hpp"
 #include "core/PhysicsWorld.hpp"
 #include "platform/Window.hpp"
 #include "core/Camera.hpp"
 #include "core/Scene.hpp"
 #include "render/Shader.hpp"
+#include "script/ScriptHost.hpp"
+#include "render/PostFX.hpp"
+#include "render/VfxSettings.hpp"
+
+#if ENGINE_WITH_EDITOR
+// Editor-only subsystems. In a standalone (ENGINE_WITH_EDITOR=0) build these
+// headers — and the ImGui/ImGuizmo dependency they drag in — are never included.
 #include "platform/ImGuiLayer.hpp"
 #include "app/EditorUI.hpp"
 #include "core/InputHandler.hpp"
 #include "render/ColliderDebugDrawer.hpp"
-#include "script/ScriptHost.hpp"
-#include "render/PostFX.hpp"
 #include "editor/EditorContext.hpp"
+#endif
 
 class Application
 {
@@ -37,7 +44,6 @@ public:
 #endif
 
 private:
-    void checkSelection();
     void reloadScripts();
 
     PhysicsWorld *physics = nullptr;
@@ -45,13 +51,17 @@ private:
     Camera *camera = nullptr;
     Scene *scene = nullptr;
     Shader *shader = nullptr;
+#if ENGINE_WITH_EDITOR
+    void checkSelection();
+
     ImGuiLayer *imguiLayer = nullptr;
     EditorUI *editorUI = nullptr;
     InputHandler *editorInput = nullptr;
     ColliderDebugDrawer *colliderDebug = nullptr;
+#endif
     ScriptHost *scriptHost = nullptr;
     PostFX *postfx = nullptr;
-    editor::Context::VFX gameVfx;  // default VFX settings used in standalone game builds
+    editor::VFX gameVfx;  // default VFX settings used in standalone game builds
     double scriptTime = 0.0;
 
     unsigned int gameFbo = 0;

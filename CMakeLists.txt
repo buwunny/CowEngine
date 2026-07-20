@@ -42,6 +42,9 @@ if(USE_VCPKG)
     message(STATUS "If you haven't already, install dependencies with vcpkg: ${VCPKG_SUGGESTED_PACKAGES}")
 endif()
 
+# Core runtime sources: compiled into EVERY target (editor and standalone).
+# Nothing in this list may include or link Dear ImGui / ImGuizmo — that is what
+# makes ENGINE_WITH_EDITOR=0 builds free of the UI dependency.
 set(SOURCES
     src/app/main.cpp
     src/render/Shader.cpp
@@ -59,11 +62,22 @@ set(SOURCES
     src/core/Scene.cpp
     src/core/PhysicsWorld.cpp
     src/core/Camera.cpp
-    src/core/InputHandler.cpp
     src/platform/Window.cpp
     src/app/Application.cpp
-    src/render/ColliderDebugDrawer.cpp
+    src/render/PostFX.cpp
+    src/script/CowScript.cpp
+    src/script/ScriptHost.cpp
+)
+
+# Editor-only sources: compiled and linked ONLY when ENGINE_WITH_EDITOR=1.
+# Everything here either draws the editor UI, drives the Build/packaging
+# pipeline, or otherwise depends on Dear ImGui / ImGuizmo. A standalone game
+# build (BUILD_GAME=ON) never adds these to the compilation, so the UI library
+# is fully stripped from the shipped binary.
+set(SOURCES_EDITOR_ONLY
+    src/app/GameBuilder.cpp
     src/app/EditorUI.cpp
+    src/app/CodeEditor.cpp
     src/editor/EditorContext.cpp
     src/editor/panels/WorkspacePanel.cpp
     src/editor/panels/HierarchyPanel.cpp
@@ -73,23 +87,10 @@ set(SOURCES
     src/editor/panels/RuntimePanel.cpp
     src/editor/panels/FileBrowserPanel.cpp
     src/editor/panels/VfxPanel.cpp
-    src/render/PostFX.cpp
-    src/app/CodeEditor.cpp
-    src/script/CowScript.cpp
-    src/script/ScriptHost.cpp
-)
-
-# ImGui integration sources (present for both native and web builds)
-list(APPEND SOURCES
+    src/render/ColliderDebugDrawer.cpp
+    src/core/InputHandler.cpp
     src/platform/ImGuiLayer.cpp
     src/platform/imgui_impl_emscripten.cpp
-
-)
-
-# Editor-only sources: not used by the standalone game build. Anything that
-# touches the Build menu / packaging pipeline lives here.
-set(SOURCES_EDITOR_ONLY
-    src/app/GameBuilder.cpp
 )
 
 if(NOT EMSCRIPTEN)
@@ -145,61 +146,70 @@ endif()
 
 # Link imported targets provided by vcpkg / config packages
 if(NOT EMSCRIPTEN)
-    # Native ImGui docking build
-    FetchContent_Declare(
-        imgui_repo
-        GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG docking
-    )
-    FetchContent_MakeAvailable(imgui_repo)
+    # ImGui / ImGuizmo are an EDITOR-ONLY dependency. For a standalone game
+    # build (BUILD_GAME=ON) we skip fetching and building them entirely, so the
+    # UI library never enters the compile or link pipeline.
+    if(NOT BUILD_GAME)
+        # Native ImGui docking build
+        FetchContent_Declare(
+            imgui_repo
+            GIT_REPOSITORY https://github.com/ocornut/imgui.git
+            GIT_TAG docking
+        )
+        FetchContent_MakeAvailable(imgui_repo)
 
-    add_library(imgui_native STATIC
-        ${imgui_repo_SOURCE_DIR}/imgui.cpp
-        ${imgui_repo_SOURCE_DIR}/imgui_draw.cpp
-        ${imgui_repo_SOURCE_DIR}/imgui_tables.cpp
-        ${imgui_repo_SOURCE_DIR}/imgui_widgets.cpp
-        ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-        ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-    )
-    target_include_directories(imgui_native PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
-    target_compile_definitions(imgui_native PRIVATE IMGUI_ENABLE_DOCKING)
-    target_link_libraries(imgui_native PUBLIC glfw glad::glad)
+        add_library(imgui_native STATIC
+            ${imgui_repo_SOURCE_DIR}/imgui.cpp
+            ${imgui_repo_SOURCE_DIR}/imgui_draw.cpp
+            ${imgui_repo_SOURCE_DIR}/imgui_tables.cpp
+            ${imgui_repo_SOURCE_DIR}/imgui_widgets.cpp
+            ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+            ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+        )
+        target_include_directories(imgui_native PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
+        target_compile_definitions(imgui_native PRIVATE IMGUI_ENABLE_DOCKING)
+        target_link_libraries(imgui_native PUBLIC glfw glad::glad)
 
-    FetchContent_Declare(
-        imguizmo_repo
-        GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
-        GIT_TAG master
-    )
-    FetchContent_GetProperties(imguizmo_repo)
-    if(NOT imguizmo_repo_POPULATED)
-        FetchContent_Populate(imguizmo_repo)
+        FetchContent_Declare(
+            imguizmo_repo
+            GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
+            GIT_TAG master
+        )
+        FetchContent_GetProperties(imguizmo_repo)
+        if(NOT imguizmo_repo_POPULATED)
+            FetchContent_Populate(imguizmo_repo)
+        endif()
+
+        add_library(imguizmo_native STATIC ${imguizmo_repo_SOURCE_DIR}/src/ImGuizmo.cpp)
+        target_include_directories(imguizmo_native PUBLIC ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src ${imgui_repo_SOURCE_DIR})
+        target_link_libraries(imguizmo_native PUBLIC imgui_native)
+        target_compile_definitions(imguizmo_native PRIVATE IMGUI_ENABLE_DOCKING)
     endif()
 
-    add_library(imguizmo_native STATIC ${imguizmo_repo_SOURCE_DIR}/src/ImGuizmo.cpp)
-    target_include_directories(imguizmo_native PUBLIC ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src ${imgui_repo_SOURCE_DIR})
-    target_link_libraries(imguizmo_native PUBLIC imgui_native)
-    target_compile_definitions(imguizmo_native PRIVATE IMGUI_ENABLE_DOCKING)
-
+    # Common runtime link libraries (shared by editor and standalone builds).
     target_link_libraries(CowEngine PRIVATE
         glad::glad
         glfw
         glm::glm
         OpenGL::GL
         nlohmann_json::nlohmann_json
-        imgui_native
-        imguizmo_native
         BulletDynamics
         BulletCollision
         LinearMath
         EnTT::EnTT
     )
     if(BUILD_GAME)
-        # Standalone game: no editor, asset paths resolved relative to the exe.
-        target_compile_definitions(CowEngine PRIVATE USE_IMGUI COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
+        # Standalone game: no editor, no ImGui. Asset paths resolve relative to the exe.
+        target_compile_definitions(CowEngine PRIVATE ENGINE_WITH_EDITOR=0 COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL)
     else()
-        target_compile_definitions(CowEngine PRIVATE USE_IMGUI ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
+        # Editor build: link the UI library and enable ImGui + docking.
+        target_link_libraries(CowEngine PRIVATE imgui_native imguizmo_native)
+        target_compile_definitions(CowEngine PRIVATE ENGINE_WITH_EDITOR=1 USE_IMGUI ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
     endif()
-    target_include_directories(CowEngine PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet ${imguizmo_repo_SOURCE_DIR})
+    target_include_directories(CowEngine PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
+    if(NOT BUILD_GAME)
+        target_include_directories(CowEngine PRIVATE ${imguizmo_repo_SOURCE_DIR})
+    endif()
 
     # Always stage assets next to the executable so the game (and editor) can
     # be launched directly from the build directory.
@@ -234,16 +244,19 @@ if(NOT EMSCRIPTEN)
     # the bin2c host tool to bake the resulting files into a generated C++
     # source linked into the editor.
     if(NOT BUILD_GAME)
+        # The template IS a standalone game, so it is decoupled exactly like a
+        # BUILD_GAME=ON build: ENGINE_WITH_EDITOR=0, no ImGui, and it reuses only
+        # ${SOURCES} — the editor-only sources are deliberately excluded.
         add_executable(CowEngineGameTpl ${SOURCES})
         set_target_properties(CowEngineGameTpl PROPERTIES OUTPUT_NAME "CowEngineGame")
         target_compile_definitions(CowEngineGameTpl PRIVATE
-            USE_IMGUI COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL IMGUI_ENABLE_DOCKING)
+            ENGINE_WITH_EDITOR=0 COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL)
         target_include_directories(CowEngineGameTpl PRIVATE
             ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/glad/include
-            ${BULLET_INCLUDE_DIRS} /usr/include/bullet ${imguizmo_repo_SOURCE_DIR})
+            ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
         target_link_libraries(CowEngineGameTpl PRIVATE
             glad::glad glfw glm::glm OpenGL::GL nlohmann_json::nlohmann_json
-            imgui_native imguizmo_native BulletDynamics BulletCollision LinearMath
+            BulletDynamics BulletCollision LinearMath
             EnTT::EnTT)
 
         # Stage the game template (exe + assets it needs at runtime) under the
@@ -341,13 +354,16 @@ if(EMSCRIPTEN)
     )
     FetchContent_MakeAvailable(bullet_repo)
 
-    # Fetch Dear ImGui for web builds and build it into the wasm
-    FetchContent_Declare(
-        imgui_repo
-        GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG docking
-    )
-    FetchContent_MakeAvailable(imgui_repo)
+    # Fetch Dear ImGui for web builds and build it into the wasm — editor only.
+    # A standalone web game (BUILD_GAME=ON) never fetches, compiles, or links it.
+    if(NOT BUILD_GAME)
+        FetchContent_Declare(
+            imgui_repo
+            GIT_REPOSITORY https://github.com/ocornut/imgui.git
+            GIT_TAG docking
+        )
+        FetchContent_MakeAvailable(imgui_repo)
+    endif()
 
     add_executable(CowEngine_web ${WEB_SOURCES})
 
@@ -355,9 +371,10 @@ if(EMSCRIPTEN)
     target_include_directories(CowEngine_web PRIVATE ${CMAKE_SOURCE_DIR}/include ${bullet_repo_SOURCE_DIR}/src)
     target_include_directories(CowEngine_web PRIVATE ${CMAKE_SOURCE_DIR}/src)
     if(BUILD_GAME)
-        target_compile_definitions(CowEngine_web PRIVATE COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN IMGUI_ENABLE_DOCKING)
+        # Standalone web game: no editor, no ImGui.
+        target_compile_definitions(CowEngine_web PRIVATE ENGINE_WITH_EDITOR=0 COWENGINE_GAME GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN)
     else()
-        target_compile_definitions(CowEngine_web PRIVATE ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN IMGUI_ENABLE_DOCKING)
+        target_compile_definitions(CowEngine_web PRIVATE ENGINE_WITH_EDITOR=1 ASSET_ROOT="${CMAKE_SOURCE_DIR}" GLM_ENABLE_EXPERIMENTAL EMSCRIPTEN IMGUI_ENABLE_DOCKING)
     endif()
 
     # Link libraries including Bullet built for EMSCRIPTEN so we use the
@@ -427,39 +444,43 @@ if(EMSCRIPTEN)
         SUFFIX ".js"
     )
 
-    # Build a minimal imgui static library from the fetched repo so we can
-    # link it into the web target. We include the core sources and the
-    # OpenGL3 backend for rendering. Input is provided by a small
-    # imgui_impl_emscripten platform file implemented in src/.
-    add_library(imgui_web STATIC
-        ${imgui_repo_SOURCE_DIR}/imgui.cpp
-        ${imgui_repo_SOURCE_DIR}/imgui_draw.cpp
-        ${imgui_repo_SOURCE_DIR}/imgui_tables.cpp
-        ${imgui_repo_SOURCE_DIR}/imgui_widgets.cpp
-        ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-    )
-    target_include_directories(imgui_web PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
-    target_compile_definitions(imgui_web PRIVATE IMGUI_ENABLE_DOCKING)
+    # ImGui / ImGuizmo for the web target — EDITOR ONLY. Skipped entirely for a
+    # standalone web game so the wasm carries none of the UI library.
+    if(NOT BUILD_GAME)
+        # Build a minimal imgui static library from the fetched repo so we can
+        # link it into the web target. We include the core sources and the
+        # OpenGL3 backend for rendering. Input is provided by a small
+        # imgui_impl_emscripten platform file implemented in src/.
+        add_library(imgui_web STATIC
+            ${imgui_repo_SOURCE_DIR}/imgui.cpp
+            ${imgui_repo_SOURCE_DIR}/imgui_draw.cpp
+            ${imgui_repo_SOURCE_DIR}/imgui_tables.cpp
+            ${imgui_repo_SOURCE_DIR}/imgui_widgets.cpp
+            ${imgui_repo_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+        )
+        target_include_directories(imgui_web PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
+        target_compile_definitions(imgui_web PRIVATE IMGUI_ENABLE_DOCKING)
 
-    FetchContent_Declare(
-        imguizmo_repo
-        GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
-        GIT_TAG master
-    )
-    FetchContent_GetProperties(imguizmo_repo)
-    if(NOT imguizmo_repo_POPULATED)
-        FetchContent_Populate(imguizmo_repo)
+        FetchContent_Declare(
+            imguizmo_repo
+            GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
+            GIT_TAG master
+        )
+        FetchContent_GetProperties(imguizmo_repo)
+        if(NOT imguizmo_repo_POPULATED)
+            FetchContent_Populate(imguizmo_repo)
+        endif()
+
+        add_library(imguizmo_web STATIC ${imguizmo_repo_SOURCE_DIR}/src/ImGuizmo.cpp)
+        target_include_directories(imguizmo_web PUBLIC ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src ${imgui_repo_SOURCE_DIR})
+        target_link_libraries(imguizmo_web PUBLIC imgui_web)
+        target_compile_definitions(imguizmo_web PRIVATE IMGUI_ENABLE_DOCKING)
+
+        # Link imgui + imguizmo into the web executable and expose USE_IMGUI to compile-time
+        target_link_libraries(CowEngine_web PRIVATE imgui_web imguizmo_web)
+        target_compile_definitions(CowEngine_web PRIVATE USE_IMGUI)
+        target_include_directories(CowEngine_web PRIVATE ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src)
     endif()
-
-    add_library(imguizmo_web STATIC ${imguizmo_repo_SOURCE_DIR}/src/ImGuizmo.cpp)
-    target_include_directories(imguizmo_web PUBLIC ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src ${imgui_repo_SOURCE_DIR})
-    target_link_libraries(imguizmo_web PUBLIC imgui_web)
-    target_compile_definitions(imguizmo_web PRIVATE IMGUI_ENABLE_DOCKING)
-
-    # Link imgui + imguizmo into the web executable and expose USE_IMGUI to compile-time
-    target_link_libraries(CowEngine_web PRIVATE imgui_web imguizmo_web)
-    target_compile_definitions(CowEngine_web PRIVATE USE_IMGUI)
-    target_include_directories(CowEngine_web PRIVATE ${imguizmo_repo_SOURCE_DIR} ${imguizmo_repo_SOURCE_DIR}/src)
 
     # Do not attempt to copy shaders at post-build for the web target (preloaded instead)
     # Copy the appropriate HTML shell into the web output as index.html.

@@ -245,6 +245,15 @@ void PostFX::beginSceneCapture()
 
 void PostFX::drawFullscreenTriangle()
 {
+#if !defined(__EMSCRIPTEN__)
+    // The scene is drawn as wireframe, which leaves desktop GL's polygon mode at
+    // GL_LINE. Every PostFX pass (sky, bloom, composite) is a solid full-screen
+    // triangle, so it MUST be filled — otherwise only the triangle's outline is
+    // rasterized and the blit collapses to a single line along the screen's
+    // bottom edge. GLES/WebGL2 has no glPolygonMode (it always fills), which is
+    // why this only bites native builds.
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+#endif
     glBindVertexArray(mQuadVao);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
@@ -252,7 +261,7 @@ void PostFX::drawFullscreenTriangle()
 
 void PostFX::drawBackground(const glm::mat4 &view, const glm::mat4 &projection,
                             const glm::vec3 &camPos,
-                            const editor::Context::VFX &vfx)
+                            const editor::VFX &vfx)
 {
     if (!mShadersReady)
         return;
@@ -327,7 +336,7 @@ void PostFX::drawBackground(const glm::mat4 &view, const glm::mat4 &projection,
 
 void PostFX::compositeTo(unsigned int targetFbo, int targetX, int targetY,
                          int targetW, int targetH,
-                         const editor::Context::VFX &vfx,
+                         const editor::VFX &vfx,
                          float timeSeconds)
 {
     if (!mShadersReady)

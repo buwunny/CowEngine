@@ -1,10 +1,13 @@
 #include "app/Application.hpp"
-#include "platform/ImGuiLayer.hpp"
-#include "app/EditorUI.hpp"
 #include "ecs/Components.hpp"
 #include "ecs/systems/PlayerInputSystem.hpp"
 #include "ecs/systems/RenderSystem.hpp"
+#include "render/VfxSettings.hpp"
+#if ENGINE_WITH_EDITOR
+#include "platform/ImGuiLayer.hpp"
+#include "app/EditorUI.hpp"
 #include <imgui.h>
+#endif
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -52,10 +55,12 @@ Application::~Application()
     delete camera;
     delete window;
     delete physics;
+#if ENGINE_WITH_EDITOR
     delete imguiLayer;
     delete editorUI;
     delete editorInput;
     delete colliderDebug;
+#endif
     delete scriptHost;
     delete postfx;
 }
@@ -64,7 +69,7 @@ Application::~Application()
 // shader. Called once per render to avoid redundant setUniform churn inside
 // renderSystem. Safe to call any time after shader->use().
 static void applyVfxToSceneShader(Shader &shader, const glm::vec3 &camPos,
-                                  const editor::Context::VFX &vfx)
+                                  const editor::VFX &vfx)
 {
     shader.setVec3("uCamPos", camPos);
     shader.setInt("uFogEnabled", vfx.fogEnabled ? 1 : 0);
@@ -116,12 +121,11 @@ void Application::init()
     shader = new Shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
     postfx = new PostFX();
 
-#ifdef COWENGINE_GAME
-    // Game-only build: no editor UI. ImGuiLayer is still constructed because
-    // on the web build Window::isKeyPressed reads ImGui's key state. Renders
-    // no widgets in game mode, so its presence is effectively free.
+#if !ENGINE_WITH_EDITOR
+    // Standalone runtime: no editor UI, and no ImGui at all. Keyboard input is
+    // served by Window's own backend (GLFW on desktop, a native emscripten
+    // keydown/keyup handler on web), so no ImGui frame lifecycle is required.
     window->setCursorDisabled(true);
-    imguiLayer = new ImGuiLayer(window);
 
     scriptHost = new ScriptHost();
     scriptHost->setContext(scene, window);
@@ -171,7 +175,7 @@ static double getTimeSeconds()
 
 void Application::tick()
 {
-#ifdef COWENGINE_GAME
+#if !ENGINE_WITH_EDITOR
     {
         double current = getTimeSeconds();
         float delta = static_cast<float>(current - lastFrame);
@@ -198,9 +202,6 @@ void Application::tick()
 
         ecs::playerInputSystem(scene->registry(), window, physics, delta);
 
-        // Maintain ImGui frame lifecycle (web needs ImGui IO updated for key polling)
-        imguiLayer->newFrame();
-
         glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 10000.0f);
 
@@ -220,11 +221,10 @@ void Application::tick()
 
         postfx->compositeTo(0, 0, 0, width, height, gameVfx, static_cast<float>(scriptTime));
 
-        imguiLayer->render();
         window->update();
         return;
     }
-#endif
+#else
 
     // Hot-reload
     scene->checkReload();
@@ -426,7 +426,7 @@ void Application::tick()
     glm::mat4 view = glm::lookAt(camera->getPosition(), camera->getPosition() + camera->getFront(), camera->getUp());
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)gameFbWidth / (float)gameFbHeight, 0.1f, 10000.0f);
 
-    const editor::Context::VFX &vfx = editorUI ? editorUI->getVFX() : gameVfx;
+    const editor::VFX &vfx = editorUI ? editorUI->getVFX() : gameVfx;
 
     postfx->ensure(gameFbWidth, gameFbHeight);
     postfx->beginSceneCapture();
@@ -478,6 +478,7 @@ void Application::tick()
     imguiLayer->render();
 
     window->update();
+#endif // ENGINE_WITH_EDITOR
 }
 
 void Application::runDesktop()
@@ -494,6 +495,7 @@ void Application::runDesktop()
     }
 }
 
+#if ENGINE_WITH_EDITOR
 void Application::checkSelection()
 {
     // Send raycast to scene to select objects in the editor when hovering in the game view and left-clicking
@@ -552,6 +554,7 @@ void Application::checkSelection()
         }
     }
 }
+#endif // ENGINE_WITH_EDITOR
 
 void Application::reloadScripts()
 {

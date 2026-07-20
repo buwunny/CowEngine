@@ -9,7 +9,7 @@
 
 #include <glm/glm.hpp>
 
-#include "editor/EditorContext.hpp"
+#include "render/VfxSettings.hpp"
 
 class Shader;
 
@@ -42,14 +42,14 @@ public:
     // shader writes vec4(color, 1.0) at far plane.
     void drawBackground(const glm::mat4 &view, const glm::mat4 &projection,
                         const glm::vec3 &camPos,
-                        const editor::Context::VFX &vfx);
+                        const editor::VFX &vfx);
 
     // After the scene is in the internal FBO, run bloom and composite into
     // the target framebuffer at the given viewport. Pass targetFbo = 0 for
     // the default framebuffer.
     void compositeTo(unsigned int targetFbo, int targetX, int targetY,
                      int targetW, int targetH,
-                     const editor::Context::VFX &vfx,
+                     const editor::VFX &vfx,
                      float timeSeconds);
 
     unsigned int sceneColor() const { return mSceneColor; }
