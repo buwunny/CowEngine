@@ -212,8 +212,15 @@ void ImGui_ImplEmscripten_NewFrame()
     ImGuiIO &io = ImGui::GetIO();
     int w, h;
     emscripten_get_canvas_element_size("canvas", &w, &h);
-    io.DisplaySize = ImVec2((float)w, (float)h);
+    // canvas.width/height are already physical (backing-store) pixels
+    // (see resizeCanvas() in the HTML templates, which multiplies by
+    // devicePixelRatio). ImGui expects DisplaySize in logical/CSS pixels
+    // and derives the framebuffer size via DisplayFramebufferScale, so
+    // divide dpr back out here to avoid scaling by it twice.
     float dpr = getDevicePixelRatio();
+    if (dpr <= 0.0f)
+        dpr = 1.0f;
+    io.DisplaySize = ImVec2((float)w / dpr, (float)h / dpr);
     io.DisplayFramebufferScale = ImVec2(dpr, dpr);
 }
 
