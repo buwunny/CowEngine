@@ -134,7 +134,7 @@ namespace editor
             float horizonY = 0.0f;                                 // world-Y of the grid plane
 
             // Solid black fill behind each wireframe object (legibility — hides sky)
-            bool wireframeFill = false;
+            bool wireframeFill = true;
 
             // Distance fog applied to the wireframe lines
             bool fogEnabled = false;

@@ -163,6 +163,7 @@ if(NOT EMSCRIPTEN)
     )
     target_include_directories(imgui_native PUBLIC ${imgui_repo_SOURCE_DIR} ${imgui_repo_SOURCE_DIR}/backends)
     target_compile_definitions(imgui_native PRIVATE IMGUI_ENABLE_DOCKING)
+    target_link_libraries(imgui_native PUBLIC glfw glad::glad)
 
     FetchContent_Declare(
         imguizmo_repo

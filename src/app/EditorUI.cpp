@@ -252,8 +252,8 @@ void EditorUI::drawDockspace()
         ImGui::DockBuilderDockWindow("Workspace", dockMain);
         ImGui::DockBuilderDockWindow("Scene Hierarchy", dockLeft);
         ImGui::DockBuilderDockWindow("Inspector", dockRight);
-        ImGui::DockBuilderDockWindow("Runtime", dockRightBottom);
         ImGui::DockBuilderDockWindow("VFX", dockRightBottom);
+        ImGui::DockBuilderDockWindow("Runtime", dockRightBottom);
         ImGui::DockBuilderDockWindow("Debug Console", dockBottom);
         ImGui::DockBuilderDockWindow("Stats", dockBottom);
         ImGui::DockBuilderDockWindow("Files", dockBottom);
