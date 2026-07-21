@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class Scene;
@@ -20,11 +21,17 @@ class ScriptHost
 {
 public:
     using LogFn = std::function<void(const std::string &)>;
+    // Fallback keyboard query for `key()` on entities that carry no PlayerInput
+    // (e.g. non-player scripts like jump_on_space). Wired to the local Window on
+    // the client; left unset on the headless server so those scripts see no
+    // input there.
+    using KeyQueryFn = std::function<bool(std::string_view)>;
 
     ScriptHost();
 
     void setContext(Scene *scene, Window *window) { sceneRef = scene; windowRef = window; }
     void setLogger(LogFn fn) { logger = std::move(fn); }
+    void setGlobalKeyQuery(KeyQueryFn fn) { globalKeyQuery = std::move(fn); }
 
     void bindBuiltins(cowscript::Script &script);
 
@@ -70,6 +77,7 @@ private:
     double timeSeconds = 0.0;
     double lastDelta = 0.0;
     LogFn logger;
+    KeyQueryFn globalKeyQuery;
 };
 
 #endif // SCRIPT_HOST_HPP

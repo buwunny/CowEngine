@@ -1,6 +1,7 @@
 #include "app/Application.hpp"
 #include "ecs/Components.hpp"
 #include "ecs/systems/PlayerInputSystem.hpp"
+#include "ecs/systems/LocalInputSystem.hpp"
 #include "ecs/systems/RenderSystem.hpp"
 #include "render/VfxSettings.hpp"
 #if ENGINE_WITH_EDITOR
@@ -12,6 +13,7 @@
 #include <cstdint>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 #include <iomanip>
 #include <cstdlib>
 
@@ -129,6 +131,8 @@ void Application::init()
 
     scriptHost = new ScriptHost();
     scriptHost->setContext(scene, window);
+    scriptHost->setGlobalKeyQuery([this](std::string_view name)
+                                  { return ecs::localKeyPressed(window, name); });
     scriptTime = 0.0;
     scene->loadScripts(*scriptHost);
     scriptHost->setTime(0.0);
@@ -147,6 +151,8 @@ void Application::init()
 
     scriptHost = new ScriptHost();
     scriptHost->setContext(scene, window);
+    scriptHost->setGlobalKeyQuery([this](std::string_view name)
+                                  { return ecs::localKeyPressed(window, name); });
     scriptHost->setLogger([this](const std::string &line)
                           {
         if (editorUI)
@@ -194,11 +200,9 @@ void Application::tick()
         if (height < 1)
             height = 1;
 
-        physics->stepSimulation(delta, 10);
-        scriptTime += delta;
-        scriptHost->setTime(scriptTime);
-        scriptHost->setDelta(delta);
-        scene->updateScripts(*scriptHost, delta);
+        // Fixed-step gameplay (input + physics + scripts); mouse-look and
+        // cursor toggle stay per-frame below.
+        advanceSim(delta, true);
 
         ecs::playerInputSystem(scene->registry(), window, physics, delta);
 
@@ -264,6 +268,14 @@ void Application::tick()
 
         lastTestingMode = testingMode;
     }
+
+    // Computed before the testing step so PlayerInput sampling can be gated on
+    // whether the game view (not an editor panel) currently owns input.
+    ImGuiIO &io = ImGui::GetIO();
+    bool uiCapturing = io.WantCaptureMouse || io.WantCaptureKeyboard;
+    bool allowGameInput = editorUI && editorUI->isGameViewInputEnabled();
+    bool heiarchyInput = editorUI && editorUI->isHeiarchyInputEnabled();
+
     if (testingMode)
     {
         // Edge detect reload (R)
@@ -276,17 +288,13 @@ void Application::tick()
         lastRPressed = r;
 
         editorUI->setRequestedTab(EditorUI::WorkspaceTab::SceneTab);
-        physics->stepSimulation(delta, 10);
-        scriptTime += delta;
-        scriptHost->setTime(scriptTime);
-        scriptHost->setDelta(delta);
-        scene->updateScripts(*scriptHost, delta);
+        // Physics + scripts advance every testing frame; only sample the local
+        // keyboard into PlayerInput when the game view owns input, so typing in
+        // editor panels doesn't drive the player.
+        bool sampleInput = scene->hasPlayer() && (!uiCapturing || allowGameInput);
+        advanceSim(delta, sampleInput);
     }
 
-    ImGuiIO &io = ImGui::GetIO();
-    bool uiCapturing = io.WantCaptureMouse || io.WantCaptureKeyboard;
-    bool allowGameInput = editorUI && editorUI->isGameViewInputEnabled();
-    bool heiarchyInput = editorUI && editorUI->isHeiarchyInputEnabled();
     if (testingMode && scene->hasPlayer() && (!uiCapturing || allowGameInput))
         ecs::playerInputSystem(scene->registry(), window, physics, delta);
     if (!window->isCursorDisabled())
@@ -555,6 +563,28 @@ void Application::checkSelection()
     }
 }
 #endif // ENGINE_WITH_EDITOR
+
+void Application::advanceSim(float frameDelta, bool sampleLocalInput)
+{
+    const double FIXED_DT = 1.0 / 60.0;
+    simAccumulator += frameDelta;
+    // Clamp to avoid a spiral of death after a long stall (tab backgrounded,
+    // breakpoint, etc.): drop the excess rather than trying to catch up.
+    if (simAccumulator > 0.25)
+        simAccumulator = 0.25;
+
+    while (simAccumulator >= FIXED_DT)
+    {
+        if (sampleLocalInput)
+            ecs::localInputSystem(scene->registry(), window);
+        physics->stepSimulation(static_cast<float>(FIXED_DT), 1);
+        scriptTime += FIXED_DT;
+        scriptHost->setTime(scriptTime);
+        scriptHost->setDelta(static_cast<float>(FIXED_DT));
+        scene->updateScripts(*scriptHost, static_cast<float>(FIXED_DT));
+        simAccumulator -= FIXED_DT;
+    }
+}
 
 void Application::reloadScripts()
 {

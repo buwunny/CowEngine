@@ -497,6 +497,11 @@ void Scene::addPlayer(Camera *camera, const glm::mat4 &model, Window *window, Ph
     physicsWorld_ = &physics;
     playerEntity_ = ecs::createPlayer(reg_, &physics, camera, model);
 
+    // Per-tick input state driving the movement script, plus the tag marking
+    // this as the client-owned player. LocalInputSystem fills these each frame.
+    reg_.emplace_or_replace<ecs::PlayerInput>(playerEntity_);
+    reg_.emplace_or_replace<ecs::LocalPlayer>(playerEntity_);
+
     if (window)
     {
 #ifndef __EMSCRIPTEN__

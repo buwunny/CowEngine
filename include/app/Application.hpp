@@ -46,6 +46,13 @@ public:
 private:
     void reloadScripts();
 
+    // Advance the simulation in fixed 1/60s steps, accumulating real frame
+    // time. Runs local input sampling (when sampleLocalInput), physics, and
+    // scripts per step so client prediction and the future server tick share
+    // one deterministic cadence. Rendering stays per-frame.
+    void advanceSim(float frameDelta, bool sampleLocalInput);
+    double simAccumulator = 0.0;
+
     PhysicsWorld *physics = nullptr;
     Window *window = nullptr;
     Camera *camera = nullptr;

@@ -1,10 +1,10 @@
 #include "script/ScriptHost.hpp"
 
 #include "core/Scene.hpp"
-#include "platform/Window.hpp"
 #include "core/Camera.hpp"
 #include "core/PhysicsWorld.hpp"
 #include "ecs/Components.hpp"
+#include "ecs/InputKeys.hpp"
 #include "ecs/Factories.hpp"
 #include "meshes/AssetManager.hpp"
 
@@ -17,36 +17,10 @@
 #include <stdexcept>
 #include <unordered_map>
 
-#include <GLFW/glfw3.h>
-
 using cowscript::Value;
 
 namespace
 {
-    int resolveGlfwKey(const std::string &name)
-    {
-        std::string n;
-        n.reserve(name.size());
-        for (char c : name)
-            n.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-
-        static const std::unordered_map<std::string, int> map = {
-            {"a", GLFW_KEY_A}, {"b", GLFW_KEY_B}, {"c", GLFW_KEY_C}, {"d", GLFW_KEY_D},
-            {"e", GLFW_KEY_E}, {"f", GLFW_KEY_F}, {"g", GLFW_KEY_G}, {"h", GLFW_KEY_H},
-            {"i", GLFW_KEY_I}, {"j", GLFW_KEY_J}, {"k", GLFW_KEY_K}, {"l", GLFW_KEY_L},
-            {"m", GLFW_KEY_M}, {"n", GLFW_KEY_N}, {"o", GLFW_KEY_O}, {"p", GLFW_KEY_P},
-            {"q", GLFW_KEY_Q}, {"r", GLFW_KEY_R}, {"s", GLFW_KEY_S}, {"t", GLFW_KEY_T},
-            {"u", GLFW_KEY_U}, {"v", GLFW_KEY_V}, {"w", GLFW_KEY_W}, {"x", GLFW_KEY_X},
-            {"y", GLFW_KEY_Y}, {"z", GLFW_KEY_Z},
-            {"space", GLFW_KEY_SPACE}, {"enter", GLFW_KEY_ENTER},
-            {"shift", GLFW_KEY_LEFT_SHIFT}, {"ctrl", GLFW_KEY_LEFT_CONTROL},
-            {"alt", GLFW_KEY_LEFT_ALT}, {"up", GLFW_KEY_UP}, {"down", GLFW_KEY_DOWN},
-            {"left", GLFW_KEY_LEFT}, {"right", GLFW_KEY_RIGHT}, {"escape", GLFW_KEY_ESCAPE},
-        };
-        auto it = map.find(n);
-        return it == map.end() ? -1 : it->second;
-    }
-
     // Entity handle ↔ Value::handle packing. Reuses the same scheme as the
     // Bullet user-pointer so the handle is portable between systems.
     Value entityHandle(const std::string &kind, ecs::Entity e)
@@ -138,12 +112,29 @@ Value ScriptHost::builtinDt(const std::vector<Value> &) { return Value::makeNumb
 
 Value ScriptHost::builtinKey(const std::vector<Value> &args)
 {
-    if (args.empty() || !windowRef)
+    if (args.empty())
         return Value::makeBool(false);
-    int code = resolveGlfwKey(args[0].toString());
-    if (code < 0)
-        return Value::makeBool(false);
-    return Value::makeBool(windowRef->isKeyPressed(code));
+    std::string name = args[0].toString();
+
+    // Player-controlled entities carry a per-tick PlayerInput; this is the
+    // network-authoritative path the headless server also drives.
+    if (sceneRef && selfEntity != ecs::NullEntity)
+    {
+        if (auto *in = sceneRef->registry().try_get<ecs::PlayerInput>(selfEntity))
+        {
+            int bit = ecs::inputKeyBit(name);
+            if (bit < 0)
+                return Value::makeBool(false);
+            return Value::makeBool(((in->keys >> bit) & 1ull) != 0ull);
+        }
+    }
+
+    // Fallback for entities without PlayerInput (e.g. jump_on_space attached to
+    // a prop): query the local keyboard. Unset on the server, so those scripts
+    // simply observe no input there.
+    if (globalKeyQuery)
+        return Value::makeBool(globalKeyQuery(name));
+    return Value::makeBool(false);
 }
 
 namespace

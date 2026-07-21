@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 #include <btBulletDynamicsCommon.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -114,6 +115,19 @@ namespace ecs
         float pendingMouseDy = 0.f;
     };
 
+    // Per-tick input for a player-controlled entity. On the client this is
+    // filled from the local Window by LocalInputSystem; on the headless server
+    // it will be filled from the network. `key()` in .cow reads this via
+    // ScriptHost, so the same movement script drives client and server.
+    // `keys` is a bitmask over ecs::kInputKeyNames (see ecs/InputKeys.hpp).
+    struct PlayerInput
+    {
+        uint64_t keys = 0;      // pressed-key bitmask, indexed by kInputKeyNames
+        float lookYaw = 0.0f;   // absolute camera yaw (degrees)
+        float lookPitch = 0.0f; // absolute camera pitch (degrees)
+        uint32_t sequence = 0;  // monotonic per-tick input sequence number
+    };
+
     // Tags. Stored as empty components so views can filter on them.
     struct Selected
     {
@@ -122,6 +136,12 @@ namespace ecs
     {
     };
     struct PlayerTag
+    {
+    };
+    // Marks the single player entity this client owns: it drives the local
+    // Camera and is fed by LocalInputSystem. Remote avatars carry PlayerTag
+    // (and PlayerInput, filled from the network) but never LocalPlayer.
+    struct LocalPlayer
     {
     };
 }

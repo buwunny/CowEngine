@@ -59,6 +59,7 @@ set(SOURCES
     src/ecs/systems/RenderSystem.cpp
     src/ecs/systems/ScriptSystem.cpp
     src/ecs/systems/PlayerInputSystem.cpp
+    src/ecs/systems/LocalInputSystem.cpp
     src/core/Scene.cpp
     src/core/PhysicsWorld.cpp
     src/core/Camera.cpp
