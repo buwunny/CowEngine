@@ -24,16 +24,29 @@ use crate::{
 pub async fn run(bind_addr: String, relay: Arc<Relay>) -> Result<()> {
     let addr: SocketAddr = bind_addr.parse()?;
 
-    // Dev certificate. In production, load a real CA-signed cert instead so the
-    // browser needs no serverCertificateHashes. For self-signed dev, print the
-    // SHA-256 the client must pin.
-    let identity = Identity::self_signed(["localhost", "127.0.0.1", "::1"])?;
-    let hash = identity.certificate_chain().as_slice()[0].hash();
-    let b64 = base64::engine::general_purpose::STANDARD.encode(hash.as_ref());
-    println!("webtransport: https://{addr}");
-    println!("webtransport: cert sha-256 base64 = {b64}");
-    println!("webtransport: cert sha-256 hex    = {}", hash.fmt(Sha256DigestFmt::DottedHex));
-    println!("  (pass ?certhash=<base64> to the client for the self-signed dev cert)");
+    // Production: load the same CA-signed PEM the wss listener uses (COW_TLS_CERT
+    // fullchain + COW_TLS_KEY). A publicly-trusted cert means the browser needs no
+    // serverCertificateHashes — it validates normally, so no ?certhash= is needed.
+    // Dev fallback: an in-memory self-signed cert whose SHA-256 the client pins.
+    let identity = match (std::env::var("COW_TLS_CERT").ok(), std::env::var("COW_TLS_KEY").ok()) {
+        (Some(cert), Some(key)) => {
+            let id = Identity::load_pemfiles(&cert, &key)
+                .await
+                .map_err(|e| anyhow::anyhow!("WT: load cert '{cert}' / key '{key}': {e}"))?;
+            println!("webtransport: https://{addr} (CA cert from {cert})");
+            id
+        }
+        _ => {
+            let id = Identity::self_signed(["localhost", "127.0.0.1", "::1"])?;
+            let hash = id.certificate_chain().as_slice()[0].hash();
+            let b64 = base64::engine::general_purpose::STANDARD.encode(hash.as_ref());
+            println!("webtransport: https://{addr} (self-signed dev cert)");
+            println!("webtransport: cert sha-256 base64 = {b64}");
+            println!("webtransport: cert sha-256 hex    = {}", hash.fmt(Sha256DigestFmt::DottedHex));
+            println!("  (pass ?certhash=<base64> to the client for the self-signed dev cert)");
+            id
+        }
+    };
 
     let config = ServerConfig::builder()
         .with_bind_address(addr)

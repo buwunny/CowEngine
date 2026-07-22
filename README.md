@@ -1,139 +1,64 @@
-# CowEngine 🐮 (cowengine.com)
+# CowEngine 🐮
 
-CowEngine is a C++ game engine with a native editor and a standalone game build that can target both desktop and WebAssembly.
+A small C++17 game engine with a browser-based editor, a `.cow` scripting
+language, Bullet physics, and authoritative multiplayer that runs in the browser.
+One codebase builds a native editor, a native game, a WebAssembly game/editor, and
+a headless multiplayer server.
 
-## Requirements
+**Live:** [cowengine.com](https://cowengine.com) — [▶ Play](https://cowengine.com/play) · [🛠 Editor](https://cowengine.com/edit)
 
-- CMake 3.21+
-- A C++17 compiler toolchain (gcc/clang or MSVC)
-- Python 3 (for the local web server helper)
-- vcpkg (for native dependencies)
-- Emscripten SDK (optional, required for web builds)
+## Features
 
-## Dependency setup (native)
+- **`.cow` scripting** — a small embedded language; gameplay (movement, spawning,
+  interactions) is written in `.cow` and bound to C++ builtins via `ScriptHost`.
+- **Bullet physics** — rigid bodies are the authoritative world state, mirrored
+  one-way into transforms each frame.
+- **Browser editor** — build and script scenes, then export a standalone game
+  (native or web) with the assets bundled in.
+- **Runs everywhere** — native (GLFW/OpenGL) and WebAssembly (Emscripten) from the
+  same sources.
+- **Multiplayer** — an authoritative headless C++ server (reusing the exact engine
+  sim) with client-side prediction/reconciliation, entity interpolation, and shared
+  physics, reached from the static web client over **WebTransport** (with a
+  **WebSocket/`wss://`** fallback).
 
-The CMake presets expect `VCPKG_ROOT` to be set and will enable vcpkg by default.
+## How multiplayer fits together
+
+```
+Browser (WASM client)              Sidecar (Rust)            C++ server
+ prediction + interpolation  ⟶  TLS termination, per-  ⟶  authoritative sim
+ WebTransport / wss://           connection UDP session     (Bullet + .cow)
+```
+
+The static page is hosted on GitHub Pages; the server + sidecar run on any host
+with `443/tcp` (and `4443/udp` for WebTransport) open. Full runbook in
+[DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Quick start
 
 ```bash
 export VCPKG_ROOT=/path/to/vcpkg
-$VCPKG_ROOT/vcpkg install
-```
-
-This project uses the dependencies listed in `vcpkg.json` (GLFW, GLM, nlohmann-json, Bullet, ImGui, glad).
-
-## Build: editor (native)
-
-```bash
 cmake --preset editor-native
 cmake --build --preset editor-native -j
-```
-
-Output: `build/editor-native/CowEngine`
-
-## Build: game (native)
-
-```bash
-cmake --preset game-native
-cmake --build --preset game-native -j
-cmake --install build/game-native
-```
-
-Output:
-- Binary: `build/game-native/CowEngineGame`
-- Installed assets: `dist/game-native/`
-
-## Build: game (web / WebAssembly)
-
-Activate Emscripten first:
-
-```bash
-source /path/to/emsdk/emsdk_env.sh
-```
-
-Then build:
-
-```bash
-emcmake cmake --preset game-web
-cmake --build --preset game-web -j
-cmake --install build/game-web
-```
-
-Output: `dist/game-web/` (self-contained static site)
-
-## Build: editor (web / WebAssembly)
-
-Activate Emscripten first:
-
-```bash
-source /path/to/emsdk/emsdk_env.sh
-```
-
-Then build:
-
-```bash
-emcmake cmake --preset editor-web
-cmake --build --preset editor-web -j
-
-cmake --install build/editor-web
-```
-
-Output: `dist/editor-web/` (self-contained static site)
-
-## Full build (native + web game outputs)
-
-The internal build system provides a helper script and a CMake target to build both game outputs.
-
-Script:
-
-```bash
-./tools/build/build-all-games.sh
-```
-
-CMake target (from any configured build tree):
-
-```bash
-cmake --build <build-dir> --target build_all_games
-```
-
-Outputs:
-- `dist/game-native/`
-- `dist/game-web/` (if Emscripten is available)
-
-## Run
-
-### Editor (native)
-
-```bash
 ./build/editor-native/CowEngine
 ```
 
-### Game (native)
+Building the game, the web targets, and the server is covered in
+[BUILDING.md](BUILDING.md).
 
-```bash
-./build/game-native/CowEngineGame
-```
+## Documentation
 
-### Game (web)
+- [BUILDING.md](BUILDING.md) — building and running every target, plus tests.
+- [DEPLOYMENT.md](DEPLOYMENT.md) — hosting the multiplayer backend and publishing
+  the site to GitHub Pages.
 
-```bash
-./tools/build/serve-web.sh 8080
-```
+## Repository layout
 
-Then open http://localhost:8080/
-
-### Editor (web)
-
-`serve-web.sh` only serves `dist/game-web`, so serve `dist/editor-web` directly with Python's built-in server:
-
-```bash
-python3 -m http.server --directory dist/editor-web 8080
-```
-
-Then open http://localhost:8080/
-
-This is also what's deployed to [cowengine.com](https://cowengine.com) via the GitHub Pages workflow.
-
-## Notes
-
-- If `emcmake` is not available, web builds are skipped by the helper script.
-- The GitHub Pages workflow builds both the game and editor web targets via Emscripten, and deploys `dist/editor-web` to GitHub Pages.
+| Path | What |
+| --- | --- |
+| `src/`, `include/` | Engine, ECS, scripting, rendering, networking |
+| `src/server/`, `include/server/` | Headless authoritative server |
+| `sidecar/` | Rust WebTransport/WebSocket → UDP relay |
+| `scripts/`, `scenes/`, `models/` | Sample `.cow` scripts, scenes, and assets |
+| `deploy/` | Dockerfiles, compose, landing page |
+| `.github/workflows/` | GitHub Pages deploy |
