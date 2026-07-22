@@ -64,6 +64,73 @@
             color: #bbb;
             margin-top: 12px;
         }
+
+        #gateOverlay {
+            background: rgba(0, 0, 0, 0.92);
+            z-index: 50;
+            flex-direction: column;
+            display: none;
+        }
+
+        #gateOverlay .panel {
+            width: 90%;
+            max-width: 340px;
+        }
+
+        #gateOverlay h1 {
+            font-size: 24px;
+            margin: 0 0 4px;
+        }
+
+        #gateOverlay .sub {
+            font-size: 13px;
+            color: #999;
+            margin: 0 0 20px;
+        }
+
+        #gateOverlay form {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        #gateOverlay input {
+            flex: 1;
+            min-width: 0;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            background: #111;
+            color: #eee;
+            font-size: 15px;
+        }
+
+        #gateOverlay button {
+            padding: 10px 16px;
+            border-radius: 6px;
+            border: 0;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        #gateOverlay .join-btn {
+            background: #4a7;
+            color: #fff;
+        }
+
+        #gateOverlay .sp-btn {
+            width: 100%;
+            background: transparent;
+            border: 1px solid #444;
+            color: #eee;
+        }
+
+        #gateOverlay .error {
+            color: #e77;
+            font-size: 13px;
+            margin: 10px 0 0;
+            min-height: 16px;
+        }
     </style>
 </head>
 
@@ -82,6 +149,18 @@
                 <div class="hint">WASD to move, mouse to look, Space to jump, Tab to release cursor</div>
             </div>
         </div>
+        <div id="gateOverlay" class="overlay">
+            <div class="panel">
+                <h1>CowEngine</h1>
+                <p class="sub">Join the shared world with a key, or play solo.</p>
+                <form id="joinForm">
+                    <input id="joinKeyInput" type="text" placeholder="Room key" autocomplete="off" autocapitalize="off" spellcheck="false">
+                    <button type="submit" class="join-btn">Join</button>
+                </form>
+                <button id="singleplayerBtn" type="button" class="sp-btn">Play Singleplayer</button>
+                <p id="joinError" class="error"></p>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -93,6 +172,47 @@
         // ?wt=/?ws=/?certhash= query params). null = single-player only.
         //   { wt: "https://host:4443", ws: "wss://host:8080", certHash: "<base64 sha-256>" }
         var __COWENGINE_SERVER__ = null;
+
+        // ---- Join gate: ask for a room key (shared world) or singleplayer ---
+        // Only relevant when this export has a multiplayer server baked in; a
+        // plain singleplayer export has nothing to gate and skips straight to
+        // loading. The choice is round-tripped through a page reload (?key=/
+        // ?singleplayer=1) rather than blocking WASM startup, so it works with
+        // no changes to the C++ side: main() reads window.CowNet.config, which
+        // is resolved below from whichever query param made it here.
+        (function () {
+            var hasServer = !!(__COWENGINE_SERVER__ && (__COWENGINE_SERVER__.wt || __COWENGINE_SERVER__.ws));
+            if (!hasServer)
+                return;
+            var params = new URLSearchParams(location.search);
+            // Already resolved (redirected here with a choice) or a developer
+            // override (?wt=/?ws=) is present: skip the gate.
+            if (params.has('key') || params.has('singleplayer') || params.has('wt') || params.has('ws'))
+                return;
+
+            var gate = document.getElementById('gateOverlay');
+            gate.style.display = 'flex';
+
+            function proceed(param, value) {
+                var url = new URL(location.href);
+                url.searchParams.set(param, value);
+                location.href = url.toString();
+            }
+
+            document.getElementById('joinForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                var key = document.getElementById('joinKeyInput').value.trim();
+                if (!key) {
+                    document.getElementById('joinError').textContent = 'Enter a key to join the shared world.';
+                    return;
+                }
+                proceed('key', key);
+            });
+
+            document.getElementById('singleplayerBtn').addEventListener('click', function () {
+                proceed('singleplayer', '1');
+            });
+        })();
 
         // ---- CowNet: browser transport shim ---------------------------------
         // WebTransport (HTTP/3) primary, WebSocket fallback. Presents one uniform
@@ -108,14 +228,27 @@
             // Resolve the server config once, from GameBuilder's injected value
             // plus ?wt/?ws/?certhash overrides. The WASM client reads hasServer()
             // and calls connect(); JS owns config, C++ owns the protocol.
+            //
+            // The join gate above sends players here with either
+            // ?singleplayer=1 (never connect, regardless of what's baked in) or
+            // ?key=<value> (join the shared room — appended to wt/ws so the
+            // sidecar's COW_JOIN_KEY gate, see deploy/.env.example, admits us).
             var config = (function () {
+                var q = null;
+                try { q = new URLSearchParams(location.search); } catch (e) { }
+                if (q && q.get('singleplayer'))
+                    return {};
                 var c = Object.assign({}, __COWENGINE_SERVER__ || {});
-                try {
-                    var q = new URLSearchParams(location.search);
+                if (q) {
                     if (q.get('wt')) c.wt = q.get('wt');
                     if (q.get('ws')) c.ws = q.get('ws');
                     if (q.get('certhash')) c.certHash = q.get('certhash');
-                } catch (e) { }
+                    var key = q.get('key');
+                    if (key) {
+                        if (c.wt) c.wt += (c.wt.indexOf('?') === -1 ? '?' : '&') + 'key=' + encodeURIComponent(key);
+                        if (c.ws) c.ws += (c.ws.indexOf('?') === -1 ? '?' : '&') + 'key=' + encodeURIComponent(key);
+                    }
+                }
                 return c;
             })();
 
