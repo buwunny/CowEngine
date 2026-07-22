@@ -295,11 +295,45 @@ fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
+/// Resolve COW_SERVER, which is documented as `host:port` — so it has to accept a
+/// DNS name, not just an IP literal. `"server:4433".parse::<SocketAddr>()` fails,
+/// and that is exactly what docker compose passes (the service name on the
+/// bridge network), so the name must go through a resolver.
+///
+/// Retries briefly: compose's `depends_on` only waits for the peer container to
+/// *start*, so on a cold `up` the embedded DNS record can lag us by a moment.
+async fn resolve_server(spec: &str) -> SocketAddr {
+    if let Ok(addr) = spec.parse::<SocketAddr>() {
+        return addr;
+    }
+    for attempt in 0..30u32 {
+        match tokio::net::lookup_host(spec).await {
+            Ok(addrs) => {
+                let mut addrs: Vec<SocketAddr> = addrs.collect();
+                // The relay socket binds 0.0.0.0, so an IPv6 answer would be
+                // unusable — take IPv4 first.
+                addrs.sort_by_key(|a| !a.is_ipv4());
+                if let Some(addr) = addrs.first() {
+                    if attempt > 0 {
+                        println!("resolved COW_SERVER {spec} -> {addr} after {attempt}s");
+                    }
+                    return *addr;
+                }
+            }
+            Err(e) if attempt == 29 => {
+                panic!("COW_SERVER {spec:?} did not resolve after 30s: {e}")
+            }
+            Err(_) => {}
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+    panic!("COW_SERVER {spec:?} resolved to no usable address");
+}
+
 #[tokio::main]
 async fn main() {
-    let server_addr: SocketAddr = env_or("COW_SERVER", "127.0.0.1:4433")
-        .parse()
-        .expect("COW_SERVER must be host:port");
+    let server_spec = env_or("COW_SERVER", "127.0.0.1:4433");
+    let server_addr = resolve_server(&server_spec).await;
     let ws_addr = env_or("COW_WS", "0.0.0.0:8080");
 
     let cfg = GateConfig::from_env();

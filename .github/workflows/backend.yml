@@ -188,6 +188,15 @@ jobs:
 
           docker compose -f docker-compose.prod.yml pull
           docker compose -f docker-compose.prod.yml up -d
+
+          # The sidecar resolves the server once at startup and pins the address
+          # on its UDP socket, so a recreated server that lands on a different
+          # bridge IP would leave it relaying into the void. A server restart
+          # drops every session anyway, so bouncing the sidecar is free.
+          if [ "$WANT" != sidecar ]; then
+            docker compose -f docker-compose.prod.yml restart sidecar
+          fi
+
           docker compose -f docker-compose.prod.yml ps
 
           # Keep a week of previous images for rollback; reclaim the rest so a

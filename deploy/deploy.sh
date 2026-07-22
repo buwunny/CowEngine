@@ -110,6 +110,15 @@ pin() {  # pin KEY VALUE — replace or append in .env
 
 [[ -n "$registry" ]] && docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
+
+# The sidecar resolves the server once at startup and pins the address on its
+# UDP socket, so a recreated server that lands on a different bridge IP would
+# leave it relaying into the void. Restarting the server drops every session
+# anyway, so bouncing the sidecar alongside it costs nothing.
+if [[ "$want_server" == 1 ]]; then
+    docker compose -f docker-compose.prod.yml restart sidecar
+fi
+
 docker compose -f docker-compose.prod.yml ps
 REMOTE
 
