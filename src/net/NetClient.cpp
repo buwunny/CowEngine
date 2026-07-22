@@ -14,7 +14,9 @@ namespace net
 {
     namespace
     {
-        const glm::vec3 kAvatarScale(0.6f, 1.0f, 0.6f);
+        // Remote players are rendered as a cow (models/cow.obj, ~10.4 x 6.4 x 3.4
+        // in model units). Uniform 0.2 makes a ~2.1-long, ~1.3-tall avatar.
+        const glm::vec3 kAvatarScale(0.2f);
 
         void setNetTransform(Scene *scene, ecs::Entity e, const glm::vec3 &pos,
                              const glm::quat &rot, const glm::vec3 &scale)

@@ -5,9 +5,11 @@
 #include "ecs/Factories.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <btBulletDynamicsCommon.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <iostream>
 
@@ -223,6 +225,20 @@ net::Snapshot GameServer::buildSnapshot(uint32_t ackSeq) const
         es.pos = {o.x(), o.y(), o.z()};
         es.rot = glm::quat(q.w(), q.x(), q.y(), q.z());
         es.vel = {v.x(), v.y(), v.z()};
+
+        // For player entities the upright capsule body carries no meaningful
+        // yaw, so replace the rotation with the player's look heading: a
+        // Y-axis turn that points the cow avatar's +X (nose) axis along the
+        // camera's horizontal facing. Clients render other players as cows and
+        // interpolate this rotation, so avatars turn to face where each player
+        // is looking.
+        if (const auto *pc = scene_.registry().try_get<ecs::PlayerController>(e); pc && pc->camera)
+        {
+            glm::vec3 f = pc->camera->getFront();
+            float heading = std::atan2(-f.z, f.x); // maps model +X onto (f.x,0,f.z)
+            es.rot = glm::angleAxis(heading, glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+
         snap.entities.push_back(es);
     }
     return snap;

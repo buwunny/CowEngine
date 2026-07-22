@@ -593,8 +593,13 @@ ecs::Entity Scene::createRemoteAvatar(const glm::vec4 &color)
     t.model = glm::mat4(0.0f);
     reg_.emplace<ecs::Transform>(e, std::move(t));
 
+    // Other players are shown as a color-tinted cow that faces where their
+    // camera is looking (the server encodes the look heading in the snapshot
+    // rotation for player entities).
     ecs::Renderable rd;
-    rd.mesh = std::make_shared<CubeMesh>(1);
+    rd.mesh = AssetManager::instance().loadStaticMeshFromOBJ("models/cow.obj", "cow");
+    if (!rd.mesh)
+        rd.mesh = std::make_shared<CubeMesh>(1); // fallback if the model is missing
     rd.color = color;
     reg_.emplace<ecs::Renderable>(e, std::move(rd));
     return e;
