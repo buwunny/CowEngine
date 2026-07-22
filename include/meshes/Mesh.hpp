@@ -1,12 +1,15 @@
 #ifndef MESH_HPP
 #define MESH_HPP
 
-#if defined(__EMSCRIPTEN__)
+#if defined(ENGINE_HEADLESS)
+#include "platform/GLHeadless.hpp"
+#elif defined(__EMSCRIPTEN__)
 #include <GLES3/gl3.h>
 #else
 #include <glad/glad.h>
 #endif
 #include <glm/glm.hpp>
+#include <algorithm>
 #include <vector>
 
 class Mesh

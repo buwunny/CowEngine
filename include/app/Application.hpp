@@ -22,6 +22,12 @@
 #include "editor/EditorContext.hpp"
 #endif
 
+namespace net
+{
+    class WebClientTransport;
+    class NetClient;
+}
+
 class Application
 {
 public:
@@ -68,6 +74,13 @@ private:
 #endif
     ScriptHost *scriptHost = nullptr;
     PostFX *postfx = nullptr;
+#ifdef __EMSCRIPTEN__
+    // Multiplayer client (web only). Null in single-player or when no server is
+    // configured. NetClient sends input, reconciles the local player, and drives
+    // interpolated remote avatars; the transport bridges to window.CowNet.
+    net::WebClientTransport *netTransport_ = nullptr;
+    net::NetClient *netClient_ = nullptr;
+#endif
     editor::VFX gameVfx;  // default VFX settings used in standalone game builds
     double scriptTime = 0.0;
 

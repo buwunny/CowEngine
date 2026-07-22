@@ -5,16 +5,26 @@
 #include "ecs/systems/PhysicsSyncSystem.hpp"
 #include "ecs/systems/RenderSystem.hpp"
 #include "ecs/systems/ScriptSystem.hpp"
+#if !defined(ENGINE_HEADLESS)
 #include "ecs/systems/PlayerInputSystem.hpp"
+#endif
 
 #include "meshes/AssetManager.hpp"
+#include "meshes/CubeMesh.hpp"
+#include "meshes/PlaneMesh.hpp"
 #include "script/CowScript.hpp"
 #include "script/ScriptHost.hpp"
 #include "core/Camera.hpp"
+#if !defined(ENGINE_HEADLESS)
 #include "platform/Window.hpp"
+#endif
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
+#include <btBulletDynamicsCommon.h>
+
+#include <limits>
 
 #include <filesystem>
 #include <fstream>
@@ -307,8 +317,10 @@ bool Scene::loadFromJSON(const std::string &path)
         }
     }
 
+#if !defined(ENGINE_HEADLESS)
     if (physicsWorld_ && hasPlayer())
         ecs::playerResetInputState(reg_, playerEntity_);
+#endif
 
     scenePath_ = chosen.string();
     lastWriteTime_ = fs::last_write_time(chosen);
@@ -502,6 +514,7 @@ void Scene::addPlayer(Camera *camera, const glm::mat4 &model, Window *window, Ph
     reg_.emplace_or_replace<ecs::PlayerInput>(playerEntity_);
     reg_.emplace_or_replace<ecs::LocalPlayer>(playerEntity_);
 
+#if !defined(ENGINE_HEADLESS)
     if (window)
     {
 #ifndef __EMSCRIPTEN__
@@ -520,6 +533,9 @@ void Scene::addPlayer(Camera *camera, const glm::mat4 &model, Window *window, Ph
     }
 
     ecs::detail::setActivePlayer(&reg_, playerEntity_);
+#else
+    (void)window;
+#endif
     s_current = this;
 }
 
@@ -534,7 +550,9 @@ void Scene::removePlayer()
     }
     reg_.destroy(playerEntity_);
     playerEntity_ = ecs::NullEntity;
+#if !defined(ENGINE_HEADLESS)
     ecs::detail::setActivePlayer(&reg_, ecs::NullEntity);
+#endif
 }
 
 void Scene::registerRigidBody(ecs::Entity e)
@@ -559,6 +577,103 @@ ecs::Entity Scene::spawnPlane(float length, float width, const glm::mat4 &model,
 ecs::Entity Scene::createEmpty(const std::string &name, const glm::mat4 &model)
 {
     return ecs::createEmptyEntity(reg_, name, model);
+}
+
+ecs::Entity Scene::createRemoteAvatar(const glm::vec4 &color)
+{
+    ecs::Entity e = reg_.create();
+    ecs::Identity id;
+    id.name = "RemotePlayer";
+    reg_.emplace<ecs::Identity>(e, std::move(id));
+
+    ecs::Transform t;
+    ecs::initializeTransformFromModel(t, glm::mat4(1.0f));
+    // Start collapsed to a point so the avatar is invisible until its first
+    // snapshot positions it — avoids a one-frame flash at the origin.
+    t.model = glm::mat4(0.0f);
+    reg_.emplace<ecs::Transform>(e, std::move(t));
+
+    ecs::Renderable rd;
+    rd.mesh = std::make_shared<CubeMesh>(1);
+    rd.color = color;
+    reg_.emplace<ecs::Renderable>(e, std::move(rd));
+    return e;
+}
+
+ecs::Entity Scene::createNetProxy(int kind, const glm::vec4 &color)
+{
+    ecs::Entity e = reg_.create();
+    ecs::Identity id;
+    id.name = "NetProxy";
+    reg_.emplace<ecs::Identity>(e, std::move(id));
+
+    ecs::Transform t;
+    ecs::initializeTransformFromModel(t, glm::mat4(1.0f));
+    // Hidden until the first snapshot positions it (see createRemoteAvatar).
+    t.model = glm::mat4(0.0f);
+    reg_.emplace<ecs::Transform>(e, std::move(t));
+
+    std::shared_ptr<Mesh> mesh;
+    if (kind == 1) // cow
+        mesh = AssetManager::instance().loadStaticMeshFromOBJ("models/cow.obj", "cow");
+    else if (kind == 2) // plane
+        mesh = std::make_shared<PlaneMesh>(10.0f, 10.0f, 2.0f, 2.0f);
+    if (!mesh) // cube (default / fallback)
+        mesh = std::make_shared<CubeMesh>(1);
+
+    ecs::Renderable rd;
+    rd.mesh = mesh;
+    rd.color = color;
+    reg_.emplace<ecs::Renderable>(e, std::move(rd));
+    return e;
+}
+
+void Scene::attachNetCollider(ecs::Entity e, const glm::vec3 &scale)
+{
+    if (!physicsWorld_ || !reg_.valid(e) || reg_.any_of<ecs::Physics>(e))
+        return;
+    auto *rd = reg_.try_get<ecs::Renderable>(e);
+    auto *t = reg_.try_get<ecs::Transform>(e);
+    if (!rd || !rd->mesh || !t)
+        return;
+
+    // Half-extents from the mesh's local AABB, scaled to world size. Falls back
+    // to a unit box if the mesh exposes no vertex data.
+    glm::vec3 half(0.5f);
+    const auto &verts = rd->mesh->getVertices();
+    const int fpv = rd->mesh->getFloatsPerVertex();
+    if (!verts.empty() && fpv >= 3)
+    {
+        glm::vec3 mn(std::numeric_limits<float>::max());
+        glm::vec3 mx(std::numeric_limits<float>::lowest());
+        for (size_t i = 0; i + 2 < verts.size(); i += fpv)
+        {
+            glm::vec3 p(verts[i], verts[i + 1], verts[i + 2]);
+            mn = glm::min(mn, p);
+            mx = glm::max(mx, p);
+        }
+        half = (mx - mn) * 0.5f;
+    }
+    half *= glm::abs(scale);
+    half = glm::max(half, glm::vec3(0.02f)); // never a degenerate shape
+
+    auto shape = std::make_unique<btBoxShape>(btVector3(half.x, half.y, half.z));
+    btTransform xf;
+    xf.setFromOpenGLMatrix(glm::value_ptr(t->modelNoScale));
+    auto motion = std::make_unique<btDefaultMotionState>(xf);
+    btRigidBody::btRigidBodyConstructionInfo rbInfo(0.0f, motion.get(), shape.get(), btVector3(0, 0, 0));
+    auto body = std::make_unique<btRigidBody>(rbInfo);
+    // Kinematic: never simulated, but pushes the dynamic (predicted) player out.
+    body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_KINEMATIC_OBJECT);
+    body->setActivationState(DISABLE_DEACTIVATION);
+
+    ecs::Physics phys;
+    phys.shape = std::move(shape);
+    phys.motion = std::move(motion);
+    phys.body = std::move(body);
+    phys.mass = 0.0;
+    reg_.emplace<ecs::Physics>(e, std::move(phys));
+    physicsWorld_->addRigidBody(reg_.get<ecs::Physics>(e).body.get());
 }
 
 ecs::Entity Scene::spawnStaticFromAsset(const std::string &meshPath, const std::string &meshName,
@@ -646,6 +761,7 @@ ecs::Entity Scene::raycast(const glm::vec3 &origin, const glm::vec3 &direction, 
     return ecs::fromUserPointer(colObj->getUserPointer());
 }
 
+#if !defined(ENGINE_HEADLESS)
 void Scene::render(Window &window, Shader &shader)
 {
     ecs::renderSystem(reg_, window, shader);
@@ -660,6 +776,7 @@ void Scene::renderFill(Window &window, Shader &shader)
 {
     ecs::renderFillSystem(reg_, window, shader);
 }
+#endif // !ENGINE_HEADLESS
 
 int Scene::loadScripts(ScriptHost &host)
 {

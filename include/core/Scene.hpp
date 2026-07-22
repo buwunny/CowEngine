@@ -68,6 +68,22 @@ public:
     ecs::Entity createEmpty(const std::string &name = "Entity",
                             const glm::mat4 &model = glm::mat4(1.0f));
 
+    // Create a render-only avatar (Transform + Renderable cube, no physics/script)
+    // for a remote player. NetClient drives its transform via interpolation.
+    ecs::Entity createRemoteAvatar(const glm::vec4 &color);
+
+    // Create a render-only proxy for a server-spawned object (kind: 0=cube,
+    // 1=cow, 2=plane). No physics/scripts — NetClient drives its transform from
+    // snapshots. Used on networked clients where spawns are server-authoritative.
+    ecs::Entity createNetProxy(int kind, const glm::vec4 &color);
+
+    // Give a network-driven entity (avatar/proxy) a *kinematic* collider so the
+    // locally-predicted player collides with it, while its motion still comes
+    // from snapshots (never simulated). The box is sized from the entity's mesh
+    // AABB times `scale` and placed at the entity's current transform, so call
+    // it only after the entity has been positioned by its first snapshot.
+    void attachNetCollider(ecs::Entity e, const glm::vec3 &scale);
+
     // Selection / hover are stored as tag components but mirrored here for
     // quick lookup in the editor.
     void setSelectedEntity(ecs::Entity e);

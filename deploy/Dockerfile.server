@@ -1,0 +1,48 @@
+# Headless authoritative CowEngine server. Reuses the engine sim (Bullet + .cow
+# scripts) with no rendering — so it needs none of the GUI vcpkg deps (glfw/imgui
+# /glad), which the `server` build skips via VCPKG_MANIFEST_NO_DEFAULT_FEATURES.
+#
+# Build context is the repo root:
+#   docker build -f deploy/Dockerfile.server -t cowengine-server .
+
+# ---- build stage ----------------------------------------------------------
+FROM ubuntu:24.04 AS build
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build git curl zip unzip tar pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# vcpkg (pinned to the repo's baseline via the manifest).
+ENV VCPKG_ROOT=/opt/vcpkg
+RUN git clone --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_ROOT" \
+    && "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+WORKDIR /src
+COPY . .
+
+# Configure the headless server only (BUILD_SERVER=ON) with the core deps only
+# (no GUI feature), then build + install the binary alongside scenes/scripts/models.
+RUN cmake -S . -B build/server -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SERVER=ON \
+        -DUSE_VCPKG=ON \
+        -DVCPKG_MANIFEST_NO_DEFAULT_FEATURES=ON \
+        -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+        -DCMAKE_INSTALL_PREFIX=/out \
+    && cmake --build build/server -j \
+    && cmake --install build/server
+
+# ---- runtime stage --------------------------------------------------------
+FROM ubuntu:24.04 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --create-home cowengine
+COPY --from=build /out /app
+WORKDIR /app
+USER cowengine
+
+# UDP control port the sidecar relays to (internal only — do NOT publish).
+EXPOSE 4433/udp
+# CowEngineServer [port] [scenePath]; data dirs sit next to the binary.
+CMD ["./CowEngineServer", "4433", "scenes/scene.json"]

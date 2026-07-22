@@ -41,6 +41,18 @@
             }
         },
         {
+            "name": "server-native",
+            "displayName": "Server (headless, native)",
+            "description": "Builds the headless authoritative game server (no rendering/UI).",
+            "inherits": "_vcpkg-base",
+            "binaryDir": "${sourceDir}/build/server-native",
+            "cacheVariables": {
+                "BUILD_SERVER": "ON",
+                "VCPKG_MANIFEST_NO_DEFAULT_FEATURES": "ON",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/server-native"
+            }
+        },
+        {
             "name": "game-web",
             "displayName": "Game (WebAssembly)",
             "description": "Builds the standalone game for the web via Emscripten. Requires emcmake.",
@@ -76,6 +88,11 @@
         {
             "name": "game-native",
             "configurePreset": "game-native",
+            "jobs": 0
+        },
+        {
+            "name": "server-native",
+            "configurePreset": "server-native",
             "jobs": 0
         },
         {

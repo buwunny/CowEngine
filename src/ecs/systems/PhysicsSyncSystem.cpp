@@ -17,6 +17,12 @@ namespace ecs
             auto &p = view.get<Physics>(e);
             if (!p.body || !p.body->getMotionState())
                 continue;
+            // Kinematic bodies are network-driven (claimed scene objects, remote
+            // avatars, spawned proxies): their render Transform is set directly by
+            // NetClient with the correct net scale. Syncing here would clobber it
+            // with the entity's local scale — leaving a wrongly-scaled duplicate.
+            if (p.body->isKinematicObject())
+                continue;
 
             btTransform trans;
             p.body->getMotionState()->getWorldTransform(trans);

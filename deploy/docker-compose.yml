@@ -1,0 +1,39 @@
+# CowEngine multiplayer stack: the headless C++ server (internal UDP only) plus
+# the public transport sidecar (wss:// + WebTransport). Run from the repo root:
+#
+#   TLS_DIR=/etc/letsencrypt/live/game.cowengine.com \
+#     docker compose -f deploy/docker-compose.yml up --build -d
+#
+# TLS_DIR must contain fullchain.pem + privkey.pem (Let's Encrypt layout).
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.server
+    restart: unless-stopped
+    networks: [cownet]
+    # No published ports: only the sidecar (same network) talks to it over UDP.
+
+  sidecar:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.sidecar
+    restart: unless-stopped
+    depends_on: [server]
+    networks: [cownet]
+    environment:
+      COW_SERVER: "server:4433"       # resolves to the server service on cownet
+      COW_WS: "0.0.0.0:8080"          # wss listener (behind the :443 mapping)
+      COW_WT: "0.0.0.0:4443"          # WebTransport / HTTP-3
+      COW_TLS_CERT: "/tls/fullchain.pem"
+      COW_TLS_KEY: "/tls/privkey.pem"
+    volumes:
+      - "${TLS_DIR:?set TLS_DIR to your cert directory}:/tls:ro"
+    ports:
+      - "443:8080"        # public wss://game.cowengine.com
+      - "4443:4443/udp"   # public WebTransport (HTTP/3 needs inbound UDP)
+
+networks:
+  cownet:
+    driver: bridge

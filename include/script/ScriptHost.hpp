@@ -32,6 +32,10 @@ public:
     void setContext(Scene *scene, Window *window) { sceneRef = scene; windowRef = window; }
     void setLogger(LogFn fn) { logger = std::move(fn); }
     void setGlobalKeyQuery(KeyQueryFn fn) { globalKeyQuery = std::move(fn); }
+    // When false, spawn_* builtins create nothing and return an inert handle
+    // (property reads/writes are absorbed). The networked client disables spawns
+    // so objects come authoritatively from the server instead of double-spawning.
+    void setSpawnEnabled(bool enabled) { spawnEnabled = enabled; }
 
     void bindBuiltins(cowscript::Script &script);
 
@@ -78,6 +82,7 @@ private:
     double lastDelta = 0.0;
     LogFn logger;
     KeyQueryFn globalKeyQuery;
+    bool spawnEnabled = true;
 };
 
 #endif // SCRIPT_HOST_HPP

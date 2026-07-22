@@ -3,6 +3,10 @@
 #include "ecs/systems/PlayerInputSystem.hpp"
 #include "ecs/systems/LocalInputSystem.hpp"
 #include "ecs/systems/RenderSystem.hpp"
+#ifdef __EMSCRIPTEN__
+#include "net/WebClientTransport.hpp"
+#include "net/NetClient.hpp"
+#endif
 #include "render/VfxSettings.hpp"
 #if ENGINE_WITH_EDITOR
 #include "platform/ImGuiLayer.hpp"
@@ -65,6 +69,10 @@ Application::~Application()
 #endif
     delete scriptHost;
     delete postfx;
+#ifdef __EMSCRIPTEN__
+    delete netClient_;
+    delete netTransport_;
+#endif
 }
 
 // Push VFX uniforms (fog, neon intensity, camera pos) into the main scene
@@ -138,6 +146,20 @@ void Application::init()
     scriptHost->setTime(0.0);
     scriptHost->setDelta(0.0);
     scene->startScripts(*scriptHost);
+
+#ifdef __EMSCRIPTEN__
+    // If a multiplayer server was configured (window.CowNet resolved a wt/ws
+    // URL), connect and drive the netcode. Single-player otherwise.
+    if (net::WebClientTransport::serverConfigured() && scene->hasPlayer())
+    {
+        // Server-authoritative world: don't spawn objects locally, and let
+        // NetClient claim the dynamic scene bodies (stop simulating them here).
+        scriptHost->setSpawnEnabled(false);
+        netTransport_ = new net::WebClientTransport();
+        netTransport_->connect();
+        netClient_ = new net::NetClient(netTransport_, scene, scene->getPlayerEntity());
+    }
+#endif
 #else
     imguiLayer = new ImGuiLayer(window);
     editorUI = new EditorUI();
@@ -582,6 +604,12 @@ void Application::advanceSim(float frameDelta, bool sampleLocalInput)
         scriptHost->setTime(scriptTime);
         scriptHost->setDelta(static_cast<float>(FIXED_DT));
         scene->updateScripts(*scriptHost, static_cast<float>(FIXED_DT));
+#ifdef __EMSCRIPTEN__
+        // After the local prediction step: send this tick's input, reconcile the
+        // local player against server snapshots, and advance remote avatars.
+        if (netClient_)
+            netClient_->update(static_cast<float>(FIXED_DT));
+#endif
         simAccumulator -= FIXED_DT;
     }
 }

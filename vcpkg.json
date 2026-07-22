@@ -2,17 +2,27 @@
     "name": "cowengine",
     "version-string": "0.1.0",
     "dependencies": [
-        "glfw3",
         "glm",
         "nlohmann-json",
         "bullet3",
-        {
-            "name": "imgui",
-            "features": [
-                "docking-experimental"
-            ]
-        },
-        "glad",
         "entt"
+    ],
+    "features": {
+        "gui": {
+            "description": "Rendering + editor dependencies (client and editor builds)",
+            "dependencies": [
+                "glfw3",
+                "glad",
+                {
+                    "name": "imgui",
+                    "features": [
+                        "docking-experimental"
+                    ]
+                }
+            ]
+        }
+    },
+    "default-features": [
+        "gui"
     ]
 }

@@ -43,13 +43,52 @@ jobs:
           cmake --install build/editor-web
         shell: bash
 
+      - name: Assemble site (editor at /, networked game at /play)
+        env:
+          # Set repository variable COWENGINE_SERVER_WS to bake the multiplayer
+          # server into the published game, e.g. wss://game.cowengine.com
+          # (and optionally COWENGINE_SERVER_WT for the WebTransport URL). Leave
+          # unset to publish a single-player game (players can still opt in with
+          # ?ws=/?wt= query params).
+          COWENGINE_SERVER_WS: ${{ vars.COWENGINE_SERVER_WS }}
+          COWENGINE_SERVER_WT: ${{ vars.COWENGINE_SERVER_WT }}
+        run: |
+          mkdir -p site
+          cp -r dist/editor-web/. site/
+          mkdir -p site/play
+          cp -r dist/game-web/. site/play/
+          python3 - <<'PY'
+          import os
+          ws = os.environ.get("COWENGINE_SERVER_WS", "").strip()
+          wt = os.environ.get("COWENGINE_SERVER_WT", "").strip()
+          if not (ws or wt):
+              print("No COWENGINE_SERVER_WS/_WT set — game published single-player.")
+              raise SystemExit(0)
+          fields = []
+          if ws: fields.append(f'ws:"{ws}"')
+          if wt: fields.append(f'wt:"{wt}"')
+          obj = "{" + ",".join(fields) + "}"
+          path = "site/play/index.html"
+          with open(path, encoding="utf-8") as f:
+              html = f.read()
+          marker = "var __COWENGINE_SERVER__ = null;"
+          if marker not in html:
+              print("WARNING: server-config marker not found in game index.html")
+              raise SystemExit(0)
+          html = html.replace(marker, f"var __COWENGINE_SERVER__ = {obj};")
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(html)
+          print(f"Baked server config into /play: {obj}")
+          PY
+        shell: bash
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload dist/editor-web artifact
+      - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/editor-web
+          path: site
 
       - name: Deploy to GitHub Pages
         id: deployment

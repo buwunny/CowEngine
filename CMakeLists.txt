@@ -14,6 +14,11 @@ if(BUILD_GAME)
     message(STATUS "BUILD_GAME=ON — building standalone game (no editor)")
 endif()
 
+# BUILD_SERVER=ON builds ONLY the headless authoritative server: it reuses the
+# engine simulation (Scene/ECS/Bullet/.cow) with a no-op GL shim and links no
+# windowing/render/UI deps. Native-only.
+option(BUILD_SERVER "Build the headless authoritative game server" OFF)
+
 # Helper target: build both native and web game artifacts used by the embedding
 # pipeline. Invokes tools/build/build-all-games.sh from the source root. This
 # target is intentionally a convenience wrapper so CI or local devs can run:
@@ -68,6 +73,8 @@ set(SOURCES
     src/render/PostFX.cpp
     src/script/CowScript.cpp
     src/script/ScriptHost.cpp
+    src/net/Protocol.cpp
+    src/net/NetClient.cpp
 )
 
 # Editor-only sources: compiled and linked ONLY when ENGINE_WITH_EDITOR=1.
@@ -93,6 +100,106 @@ set(SOURCES_EDITOR_ONLY
     src/platform/ImGuiLayer.cpp
     src/platform/imgui_impl_emscripten.cpp
 )
+
+# ===== Headless server =====
+# When BUILD_SERVER=ON this is the ONLY target produced. It compiles the sim
+# sources with ENGINE_HEADLESS (which swaps GL/GLFW headers for the no-op shim)
+# and links just the simulation libraries — no glfw/glad/OpenGL/ImGui.
+if(BUILD_SERVER)
+    if(EMSCRIPTEN)
+        message(FATAL_ERROR "BUILD_SERVER is native-only; do not configure it with emcmake.")
+    endif()
+
+    # Headless simulation sources shared by the server and the netclient test.
+    set(SIM_SOURCES
+        src/core/Scene.cpp
+        src/core/PhysicsWorld.cpp
+        src/core/Camera.cpp
+        src/ecs/Factories.cpp
+        src/ecs/ComponentOps.cpp
+        src/ecs/systems/PhysicsSyncSystem.cpp
+        src/ecs/systems/ScriptSystem.cpp
+        src/meshes/PlaneMesh.cpp
+        src/meshes/CubeMesh.cpp
+        src/meshes/CircleMesh.cpp
+        src/meshes/StaticMesh.cpp
+        src/meshes/AssetManager.cpp
+        src/script/CowScript.cpp
+        src/script/ScriptHost.cpp
+        src/net/Protocol.cpp
+    )
+    set(SERVER_SOURCES
+        ${SIM_SOURCES}
+        src/net/UdpLink.cpp
+        src/server/GameServer.cpp
+        src/server/main.cpp
+    )
+
+    find_package(Bullet REQUIRED)
+    find_package(Bullet CONFIG REQUIRED)
+    find_package(glm CONFIG QUIET)
+    if(NOT glm_FOUND)
+        FetchContent_Declare(glm_repo GIT_REPOSITORY https://github.com/g-truc/glm.git GIT_TAG master)
+        FetchContent_MakeAvailable(glm_repo)
+    endif()
+    find_package(nlohmann_json CONFIG QUIET)
+    if(NOT nlohmann_json_FOUND)
+        FetchContent_Declare(nlohmann_json_repo GIT_REPOSITORY https://github.com/nlohmann/json.git GIT_TAG v3.12.0)
+        FetchContent_MakeAvailable(nlohmann_json_repo)
+    endif()
+    find_package(EnTT CONFIG QUIET)
+    if(NOT EnTT_FOUND)
+        FetchContent_Declare(entt_repo GIT_REPOSITORY https://github.com/skypjack/entt.git GIT_TAG v3.13.2)
+        FetchContent_MakeAvailable(entt_repo)
+    endif()
+
+    add_executable(CowEngineServer ${SERVER_SOURCES})
+    target_compile_definitions(CowEngineServer PRIVATE
+        ENGINE_HEADLESS=1 ENGINE_WITH_EDITOR=0 GLM_ENABLE_EXPERIMENTAL)
+    target_include_directories(CowEngineServer PRIVATE
+        ${CMAKE_SOURCE_DIR}/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
+    target_link_libraries(CowEngineServer PRIVATE
+        glm::glm
+        nlohmann_json::nlohmann_json
+        BulletDynamics
+        BulletCollision
+        LinearMath
+        EnTT::EnTT
+    )
+
+    # Stage the assets the server loads at runtime (scene + scripts + models).
+    add_custom_command(TARGET CowEngineServer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/scenes $<TARGET_FILE_DIR:CowEngineServer>/scenes
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/scripts $<TARGET_FILE_DIR:CowEngineServer>/scripts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/models $<TARGET_FILE_DIR:CowEngineServer>/models
+    )
+    install(TARGETS CowEngineServer RUNTIME DESTINATION .)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/scenes/  DESTINATION scenes)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/ DESTINATION scripts)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/models/  DESTINATION models)
+
+    # Headless integration test for the client netcode (NetClient) driven by a
+    # mock transport — verifies remote-avatar interpolation, join/leave, and
+    # local reconciliation without a GL context. Built alongside the server.
+    add_executable(cowengine_netclient_test
+        ${SIM_SOURCES}
+        src/net/NetClient.cpp
+        test/netclient_test.cpp
+    )
+    target_compile_definitions(cowengine_netclient_test PRIVATE
+        ENGINE_HEADLESS=1 ENGINE_WITH_EDITOR=0 GLM_ENABLE_EXPERIMENTAL)
+    target_include_directories(cowengine_netclient_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
+    target_link_libraries(cowengine_netclient_test PRIVATE
+        glm::glm nlohmann_json::nlohmann_json
+        BulletDynamics BulletCollision LinearMath EnTT::EnTT)
+
+    # Server + test are the only artifacts for this configuration.
+    return()
+endif()
 
 if(NOT EMSCRIPTEN)
     add_executable(CowEngine ${SOURCES})
@@ -325,8 +432,9 @@ if(EMSCRIPTEN)
         endif()
     endif()
 
-    # Use the same source list for web builds (unified codebase)
-    set(WEB_SOURCES ${SOURCES})
+    # Use the same source list for web builds (unified codebase), plus the
+    # browser transport bridge (EM_JS <-> window.CowNet), which is web-only.
+    set(WEB_SOURCES ${SOURCES} src/net/WebClientTransport.cpp)
 
     if(NOT BUILD_GAME)
         list(APPEND WEB_SOURCES ${SOURCES_EDITOR_ONLY})
@@ -406,7 +514,10 @@ if(EMSCRIPTEN)
         list(APPEND WEB_LINK_FLAGS "-s ASSERTIONS=1")
     endif()
     # Export ccall (for Module.ccall in EM_ASM) and FS (so Module.FS is available in preRun)
-    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"FS\",\"UTF8ToString\",\"stringToUTF8\",\"lengthBytesUTF8\"]")
+    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"FS\",\"UTF8ToString\",\"stringToUTF8\",\"lengthBytesUTF8\",\"HEAPU8\"]")
+    # Networking bridge: window.CowNet mallocs a buffer, copies an inbound
+    # message into HEAPU8, and calls _cow_net_deliver, then frees it.
+    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_FUNCTIONS=[\"_main\",\"_malloc\",\"_free\",\"_cow_net_deliver\"]")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scenes@/scenes")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/shaders@/shaders")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")

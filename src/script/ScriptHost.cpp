@@ -271,6 +271,12 @@ Value ScriptHost::builtinSelfOnGround(const std::vector<Value> &)
 
 Value ScriptHost::builtinSpawn(const std::vector<Value> &args, const std::string &kind)
 {
+    // Networked clients don't spawn locally — the server is authoritative and
+    // replicates spawns back. Return an inert "sink" handle so scripts that
+    // configure the spawned object (e.g. shoot_cow setting velocity) run without
+    // erroring on a null handle.
+    if (!spawnEnabled)
+        return Value::makeHandle("sink", nullptr);
     if (!sceneRef) return Value::makeNull();
     glm::vec3 pos = vec3FromArgs(args, glm::vec3(0.0f, 5.0f, 0.0f));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
@@ -329,9 +335,12 @@ Value ScriptHost::builtinRigidbody(const std::vector<Value> &args)
 
 Value ScriptHost::builtinCamera(const std::vector<Value> &)
 {
-    if (!sceneRef || !sceneRef->hasPlayer())
+    // The camera belongs to the current `self` entity's PlayerController, so
+    // each player (local or server-side) drives its own camera rather than a
+    // single global one.
+    if (!sceneRef || selfEntity == ecs::NullEntity)
         return Value::makeNull();
-    auto *pc = sceneRef->registry().try_get<ecs::PlayerController>(sceneRef->getPlayerEntity());
+    auto *pc = sceneRef->registry().try_get<ecs::PlayerController>(selfEntity);
     if (!pc || !pc->camera)
         return Value::makeNull();
     return Value::makeHandle("camera", pc->camera);
@@ -446,6 +455,14 @@ Value ScriptHost::getProperty(const Value &target, const std::string &prop)
     if (target.type != Value::Handle)
         throw std::runtime_error("cannot read '." + prop + "' on a non-handle value");
     const std::string &kind = target.str;
+    // Inert handle from a suppressed spawn: chain returns another sink for
+    // sub-handles (.rigidbody/.transform) and zero for scalars.
+    if (kind == "sink")
+    {
+        if (prop == "rigidbody" || prop == "transform")
+            return Value::makeHandle("sink", nullptr);
+        return Value::makeNumber(0.0);
+    }
     if (kind == "camera")
         return cameraGet(static_cast<Camera *>(target.handle), prop);
 
@@ -483,6 +500,8 @@ void ScriptHost::setProperty(const Value &target, const std::string &prop, const
     if (target.type != Value::Handle)
         throw std::runtime_error("cannot write '." + prop + "' on a non-handle value");
     const std::string &kind = target.str;
+    if (kind == "sink")
+        return; // suppressed-spawn handle: absorb all writes
     if (kind == "camera")
     {
         cameraSet(static_cast<Camera *>(target.handle), prop, value);

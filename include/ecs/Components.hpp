@@ -128,6 +128,15 @@ namespace ecs
         uint32_t sequence = 0;  // monotonic per-tick input sequence number
     };
 
+    // Network replication id. On the server, every replicated entity carries one
+    // (scene dynamic objects use their Identity.id; players and spawned objects
+    // use high id ranges — see net::kPlayerNetIdBase / kSpawnNetIdBase). Snapshots
+    // and spawn/despawn events are keyed by this id.
+    struct NetId
+    {
+        uint32_t id = 0;
+    };
+
     // Tags. Stored as empty components so views can filter on them.
     struct Selected
     {

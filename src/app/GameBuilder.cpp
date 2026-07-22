@@ -144,6 +144,49 @@ namespace
         html.replace(pos, marker.size(), replacement);
     }
 
+    // Bake the multiplayer server config into the exported page by replacing the
+    // `var __COWENGINE_SERVER__ = null;` sentinel with a JS object literal. Reads
+    // COWENGINE_SERVER_WS / _WT / _CERTHASH from the environment at export time;
+    // if none are set the page stays single-player (players can still opt in with
+    // ?ws=/?wt= query params). Example:
+    //   COWENGINE_SERVER_WS=wss://game.cowengine.com
+    void patchServerConfig(std::string &html)
+    {
+        auto env = [](const char *k) -> std::string {
+            const char *v = std::getenv(k);
+            return v ? std::string(v) : std::string();
+        };
+        std::string ws = env("COWENGINE_SERVER_WS");
+        std::string wt = env("COWENGINE_SERVER_WT");
+        std::string certHash = env("COWENGINE_SERVER_CERTHASH");
+        if (ws.empty() && wt.empty())
+            return;
+
+        // These values are URLs / base64 hashes with no quotes or backslashes, so
+        // a plain quoted literal is safe.
+        std::string obj = "{";
+        bool first = true;
+        auto field = [&](const char *key, const std::string &val) {
+            if (val.empty())
+                return;
+            if (!first)
+                obj += ",";
+            obj += key;
+            obj += ":\"" + val + "\"";
+            first = false;
+        };
+        field("ws", ws);
+        field("wt", wt);
+        field("certHash", certHash);
+        obj += "}";
+
+        const std::string marker = "var __COWENGINE_SERVER__ = null;";
+        auto pos = html.find(marker);
+        if (pos == std::string::npos)
+            return;
+        html.replace(pos, marker.size(), "var __COWENGINE_SERVER__ = " + obj + ";");
+    }
+
     // Build a fresh game HTML blob from the embedded template, patched with the
     // exported scene plus snapshotted scripts and models.
     std::vector<unsigned char> makeGameHtml(const std::string &sceneJson,
@@ -154,6 +197,7 @@ namespace
         patchHtmlSentinel(html, "__COWENGINE_SCENE__", sceneJson);
         patchHtmlSentinel(html, "__COWENGINE_SCRIPTS__", scriptsJson);
         patchHtmlSentinel(html, "__COWENGINE_MODELS__", modelsJson);
+        patchServerConfig(html);
         return std::vector<unsigned char>(html.begin(), html.end());
     }
 

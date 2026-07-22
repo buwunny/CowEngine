@@ -1,0 +1,29 @@
+# WebTransport/WebSocket -> UDP relay in front of the C++ server. Built with both
+# `tls` (wss://, for https origins) and `webtransport` (HTTP/3) features.
+#
+# Build context is the repo root:
+#   docker build -f deploy/Dockerfile.sidecar -t cowengine-sidecar .
+
+# ---- build stage ----------------------------------------------------------
+FROM rust:1-bookworm AS build
+# ring (tls) needs a C toolchain; it's already present in the rust image, but be
+# explicit about perl which ring's build uses.
+RUN apt-get update && apt-get install -y --no-install-recommends perl \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY sidecar/ ./sidecar/
+WORKDIR /src/sidecar
+RUN cargo build --release --features "tls webtransport"
+
+# ---- runtime stage --------------------------------------------------------
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --create-home cowengine
+COPY --from=build /src/sidecar/target/release/cowengine-sidecar /usr/local/bin/
+USER cowengine
+
+# WSS (public, terminate here) and WebTransport/HTTP-3 (UDP). Map to :443 outside.
+EXPOSE 8080/tcp
+EXPOSE 4443/udp
+CMD ["cowengine-sidecar"]

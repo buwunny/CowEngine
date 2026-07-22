@@ -37,3 +37,19 @@ void Camera::look(float xoffset, float yoffset)
     front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
     this->front = glm::normalize(front);
 }
+
+void Camera::setLook(float yawDeg, float pitchDeg)
+{
+    yaw = yawDeg;
+    pitch = pitchDeg;
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
+
+    glm::vec3 f;
+    f.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    f.y = sin(glm::radians(pitch));
+    f.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front = glm::normalize(f);
+}

@@ -89,6 +89,155 @@
         // GameBuilder replaces this line; null means use the scene baked into CowEngine.data.
         var __COWENGINE_SCENE__ = null;
 
+        // Multiplayer server config, injected by GameBuilder (or overridden by
+        // ?wt=/?ws=/?certhash= query params). null = single-player only.
+        //   { wt: "https://host:4443", ws: "wss://host:8080", certHash: "<base64 sha-256>" }
+        var __COWENGINE_SERVER__ = null;
+
+        // ---- CowNet: browser transport shim ---------------------------------
+        // WebTransport (HTTP/3) primary, WebSocket fallback. Presents one uniform
+        // send(channel,bytes)/state interface to the WASM client (WebClientTransport
+        // calls in via EM_JS) and pushes inbound messages into the wasm queue via
+        // the exported _cow_net_deliver. Channels: 0 = unreliable, 1 = reliable.
+        window.CowNet = (function () {
+            var ST = { DISCONNECTED: 0, CONNECTING: 1, CONNECTED: 2, FAILED: 3 };
+            var state = ST.DISCONNECTED;
+            var sendFn = null;      // function(channel, Uint8Array)
+            var observer = null;    // optional JS observer(channel, Uint8Array)
+
+            // Resolve the server config once, from GameBuilder's injected value
+            // plus ?wt/?ws/?certhash overrides. The WASM client reads hasServer()
+            // and calls connect(); JS owns config, C++ owns the protocol.
+            var config = (function () {
+                var c = Object.assign({}, __COWENGINE_SERVER__ || {});
+                try {
+                    var q = new URLSearchParams(location.search);
+                    if (q.get('wt')) c.wt = q.get('wt');
+                    if (q.get('ws')) c.ws = q.get('ws');
+                    if (q.get('certhash')) c.certHash = q.get('certhash');
+                } catch (e) { }
+                return c;
+            })();
+
+            function setState(s) { state = s; }
+
+            // Tolerant base64 -> bytes. A cert hash passed as ?certhash= arrives
+            // via URLSearchParams, which turns '+' into a space; also accept the
+            // base64url alphabet and missing padding.
+            function b64ToBytes(s) {
+                s = String(s).replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+                while (s.length % 4) s += '=';
+                var bin = atob(s);
+                var out = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+                return out;
+            }
+
+            function deliverToWasm(channel, bytes) {
+                if (typeof Module === 'undefined' || !Module._cow_net_deliver ||
+                    !Module._malloc || !Module.HEAPU8) return;
+                var ptr = Module._malloc(bytes.length || 1);
+                Module.HEAPU8.set(bytes, ptr);
+                Module._cow_net_deliver(channel, ptr, bytes.length);
+                Module._free(ptr);
+            }
+
+            function onMsg(channel, bytes) {
+                if (observer) { try { observer(channel, bytes); } catch (e) { } }
+                deliverToWasm(channel, bytes);
+            }
+
+            async function readWholeStream(stream) {
+                var reader = stream.getReader(), chunks = [], total = 0;
+                for (; ;) {
+                    var r = await reader.read();
+                    if (r.done) break;
+                    chunks.push(r.value); total += r.value.length;
+                }
+                var out = new Uint8Array(total), off = 0;
+                for (var i = 0; i < chunks.length; i++) { out.set(chunks[i], off); off += chunks[i].length; }
+                return out;
+            }
+
+            async function connectWebTransport(url, certHashB64) {
+                var opts = {};
+                if (certHashB64) {
+                    var raw = b64ToBytes(certHashB64);
+                    opts.serverCertificateHashes = [{ algorithm: 'sha-256', value: raw.buffer }];
+                }
+                var wt = new WebTransport(url, opts);
+                await wt.ready;
+                var dgWriter = wt.datagrams.writable.getWriter();
+                sendFn = async function (channel, bytes) {
+                    var copy = bytes.slice(); // detach from wasm HEAPU8 before awaiting
+                    if (channel === 1) {
+                        var s = await wt.createUnidirectionalStream();
+                        var w = s.getWriter();
+                        await w.write(copy); await w.close();
+                    } else {
+                        await dgWriter.write(copy);
+                    }
+                };
+                (async function () {
+                    var r = wt.datagrams.readable.getReader();
+                    try { for (; ;) { var d = await r.read(); if (d.done) break; if (d.value) onMsg(0, new Uint8Array(d.value)); } } catch (e) { }
+                })();
+                (async function () {
+                    var r = wt.incomingUnidirectionalStreams.getReader();
+                    try {
+                        for (; ;) {
+                            var s = await r.read(); if (s.done) break;
+                            readWholeStream(s.value).then(function (b) { onMsg(1, b); }).catch(function () { });
+                        }
+                    } catch (e) { }
+                })();
+                wt.closed.then(function () { setState(ST.DISCONNECTED); }).catch(function () { setState(ST.FAILED); });
+                setState(ST.CONNECTED);
+            }
+
+            function connectWebSocket(url) {
+                return new Promise(function (resolve, reject) {
+                    var ws = new WebSocket(url);
+                    ws.binaryType = 'arraybuffer';
+                    ws.onopen = function () {
+                        sendFn = function (channel, bytes) {
+                            var framed = new Uint8Array(1 + bytes.length);
+                            framed[0] = channel; framed.set(bytes, 1);
+                            ws.send(framed);
+                        };
+                        setState(ST.CONNECTED); resolve();
+                    };
+                    ws.onmessage = function (e) { var b = new Uint8Array(e.data); if (b.length) onMsg(b[0], b.subarray(1)); };
+                    ws.onclose = function () { setState(ST.DISCONNECTED); };
+                    ws.onerror = function (e) { setState(ST.FAILED); reject(e); };
+                });
+            }
+
+            async function connect(cfg) {
+                cfg = cfg || config;
+                if (!cfg || (!cfg.wt && !cfg.ws)) return;
+                setState(ST.CONNECTING);
+                if (cfg.wt && typeof WebTransport !== 'undefined') {
+                    try { await connectWebTransport(cfg.wt, cfg.certHash); console.log('[CowNet] WebTransport connected', cfg.wt); return; }
+                    catch (e) { console.warn('[CowNet] WebTransport failed; falling back to WebSocket', e); }
+                }
+                if (cfg.ws) {
+                    try { await connectWebSocket(cfg.ws); console.log('[CowNet] WebSocket connected', cfg.ws); return; }
+                    catch (e) { console.error('[CowNet] WebSocket failed', e); setState(ST.FAILED); return; }
+                }
+                setState(ST.FAILED);
+            }
+
+            return {
+                connect: connect,
+                send: function (channel, bytes) { if (sendFn) { try { sendFn(channel, bytes); } catch (e) { } } },
+                stateCode: function () { return state; },
+                setObserver: function (fn) { observer = fn; },
+                hasServer: function () { return !!(config.wt || config.ws); },
+                config: config,
+            };
+        })();
+
         function resizeCanvas() {
             var canvas = document.getElementById('canvas');
             if (!canvas) return;
@@ -124,6 +273,8 @@
                 }
                 startO.addEventListener('click', startGame);
                 resizeCanvas();
+                // Multiplayer connection is driven by the WASM client
+                // (WebClientTransport) using the config CowNet resolved above.
             }
         };
     </script>
