@@ -1,11 +1,11 @@
 # CowEngine multiplayer stack: the headless C++ server (internal UDP only) plus
 # the public transport sidecar (wss:// + WebTransport). Run from the repo root:
 #
-#   COW_DOMAIN=game.cowengine.com \
-#     docker compose -f deploy/docker-compose.yml up --build -d
+#   sudo deploy/install-certs.sh game.cowengine.com     # once, + as a renew hook
+#   docker compose -f deploy/docker-compose.yml up --build -d
 #
-# Expects certbot's standard layout under TLS_DIR (default /etc/letsencrypt),
-# i.e. live/$COW_DOMAIN/{fullchain,privkey}.pem.
+# TLS_DIR (default /opt/cowengine/tls) must hold fullchain.pem + privkey.pem
+# readable by the sidecar's uid — install-certs.sh does exactly that.
 
 services:
   server:
@@ -27,17 +27,18 @@ services:
       COW_SERVER: "server:4433"       # resolves to the server service on cownet
       COW_WS: "0.0.0.0:8080"          # wss listener (behind the :443 mapping)
       COW_WT: "0.0.0.0:4443"          # WebTransport / HTTP-3
-      COW_TLS_CERT: "/tls/live/${COW_DOMAIN:?set COW_DOMAIN to your cert's domain}/fullchain.pem"
-      COW_TLS_KEY: "/tls/live/${COW_DOMAIN}/privkey.pem"
+      COW_TLS_CERT: "/tls/fullchain.pem"
+      COW_TLS_KEY: "/tls/privkey.pem"
       # Access control (all optional). Lock connections to your site's origin,
       # optionally require a shared ?key=, and cap connections per IP.
       COW_ALLOWED_ORIGINS: "${COW_ALLOWED_ORIGINS:-https://cowengine.com}"
       COW_JOIN_KEY: "${COW_JOIN_KEY:-}"          # set for a friends-only gate
       COW_MAX_CONN_PER_IP: "${COW_MAX_CONN_PER_IP:-8}"
     volumes:
-      # certbot's live/<domain>/*.pem are RELATIVE symlinks into ../../archive/,
-      # so mount the whole tree — mounting just live/<domain> yields dangling links.
-      - "${TLS_DIR:-/etc/letsencrypt}:/tls:ro"
+      # NOT /etc/letsencrypt (0700 root:root vs. an unprivileged container) — see
+      # deploy/install-certs.sh, which publishes the PEMs here readable by the
+      # container's uid.
+      - "${TLS_DIR:-/opt/cowengine/tls}:/tls:ro"
     ports:
       - "443:8080"        # public wss://game.cowengine.com
       - "4443:4443/udp"   # public WebTransport (HTTP/3 needs inbound UDP)

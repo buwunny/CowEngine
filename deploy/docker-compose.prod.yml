@@ -24,16 +24,17 @@ services:
       COW_SERVER: "server:4433"       # resolves to the server service on cownet
       COW_WS: "0.0.0.0:8080"          # wss listener (behind the :443 mapping)
       COW_WT: "0.0.0.0:4443"          # WebTransport / HTTP-3
-      COW_TLS_CERT: "/tls/live/${COW_DOMAIN:?set COW_DOMAIN in .env}/fullchain.pem"
-      COW_TLS_KEY: "/tls/live/${COW_DOMAIN}/privkey.pem"
+      COW_TLS_CERT: "/tls/fullchain.pem"
+      COW_TLS_KEY: "/tls/privkey.pem"
       COW_ALLOWED_ORIGINS: "${COW_ALLOWED_ORIGINS:-https://cowengine.com}"
       COW_JOIN_KEY: "${COW_JOIN_KEY:-}"          # set for a friends-only gate
       COW_MAX_CONN_PER_IP: "${COW_MAX_CONN_PER_IP:-8}"
     volumes:
-      # certbot's live/<domain>/*.pem are RELATIVE symlinks into ../../archive/,
-      # so the whole /etc/letsencrypt tree has to be mounted — mounting just
-      # live/<domain> hands the container dangling links.
-      - "${TLS_DIR:-/etc/letsencrypt}:/tls:ro"
+      # NOT /etc/letsencrypt: that tree is 0700 root:root, and this container runs
+      # unprivileged, so it would read as "Permission denied" and quietly fall back
+      # to plain ws://. `deploy/install-certs.sh` copies the two PEMs here owned by
+      # the container's uid (and runs as a certbot deploy hook on renewal).
+      - "${TLS_DIR:-/opt/cowengine/tls}:/tls:ro"
     ports:
       - "443:8080"        # public wss://game.<your-domain>
       - "4443:4443/udp"   # public WebTransport (HTTP/3 needs inbound UDP)

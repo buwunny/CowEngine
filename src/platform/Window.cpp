@@ -115,6 +115,12 @@ static EM_BOOL em_game_keydown(int, const EmscriptenKeyboardEvent *e, void *)
     int key = jsKeyToGlfw(e);
     if (key >= 0 && key <= GLFW_KEY_LAST)
         s_keyState[key] = true;
+    // Tab is our cursor lock/unlock hotkey. Its default browser action shifts
+    // keyboard focus off the canvas (to the next focusable element), which
+    // both breaks focus-dependent input afterwards and can cause the *next*
+    // pointer-lock request to be silently rejected. Suppress that default.
+    if (key == GLFW_KEY_TAB)
+        return EM_TRUE;
     return EM_FALSE; // don't consume — let the browser handle defaults it needs
 }
 
@@ -333,6 +339,21 @@ void Window::setCursorDisabled(bool disabled)
     {
         emscripten_exit_pointerlock();
     }
+#endif
+}
+
+bool Window::isCursorDisabled() const
+{
+#if defined(__EMSCRIPTEN__)
+    // The requested/exited state (cursorDisabled) is set optimistically and
+    // can diverge from reality: emscripten_request_pointerlock() is async and
+    // browsers can silently reject it (e.g. a post-exit cooldown). Trusting
+    // the cached flag there would leave mouse-look permanently gated off even
+    // though the browser never actually re-acquired the lock. Query the real
+    // pointer-lock state instead so this always matches what the browser did.
+    return js_is_canvas_pointer_locked() != 0;
+#else
+    return cursorDisabled;
 #endif
 }
 

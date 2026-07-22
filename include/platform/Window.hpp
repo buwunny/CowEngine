@@ -36,7 +36,7 @@ public:
     bool toggleCursor();
     void setCursorDisabled(bool disabled);
     bool isKeyPressed(int key);
-    bool isCursorDisabled() const { return cursorDisabled; };
+    bool isCursorDisabled() const;
     static void framebuffer_size_callback(GLFWwindow *window, int width, int height);
     using MouseDeltaCallback = void (*)(void *user, float dx, float dy);
     // Register a mouse-delta callback for web builds (pointer-lock movementX/Y).

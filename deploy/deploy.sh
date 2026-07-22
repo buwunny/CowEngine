@@ -79,7 +79,9 @@ say "updating $TARGET:$REMOTE_DIR"
 ssh "$TARGET" "mkdir -p '$REMOTE_DIR'"
 scp "$REPO_ROOT/deploy/docker-compose.prod.yml" \
     "$REPO_ROOT/deploy/.env.example" \
+    "$REPO_ROOT/deploy/install-certs.sh" \
     "$TARGET:$REMOTE_DIR/"
+ssh "$TARGET" "chmod +x '$REMOTE_DIR/install-certs.sh'"
 
 # .env holds host-specific secrets (TLS_DIR, join key) — seed it once, then only
 # rewrite the image pins so a redeploy never clobbers the operator's settings.
@@ -93,7 +95,7 @@ cd "$dir"
 
 if [[ ! -f .env ]]; then
     cp .env.example .env
-    echo "deploy: seeded $dir/.env from the example — set COW_DOMAIN (+ COW_*) and rerun" >&2
+    echo "deploy: seeded $dir/.env from the example — review TLS_DIR + COW_* and rerun" >&2
     echo "deploy: NOT starting the stack until .env is reviewed" >&2
     exit 3
 fi
@@ -124,7 +126,7 @@ REMOTE
 
 if [[ $rc -eq 3 ]]; then
     say "images are on the host; finish setup then rerun"
-    echo "  ssh $TARGET 'nano $REMOTE_DIR/.env'   # set COW_DOMAIN + COW_* first"
+    echo "  ssh $TARGET 'nano $REMOTE_DIR/.env'   # check TLS_DIR + COW_* first"
     exit 3
 elif [[ $rc -ne 0 ]]; then
     die "remote step failed (exit $rc)"

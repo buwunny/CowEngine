@@ -91,6 +91,43 @@ sudo certbot certonly --standalone -d game.cowengine.com
 # → /etc/letsencrypt/live/game.cowengine.com/{fullchain.pem,privkey.pem}
 ```
 
+**Do not mount `/etc/letsencrypt` into the sidecar.** Certbot keeps `live/` and
+`archive/` at `0700 root:root`, the sidecar runs unprivileged, and the failure is
+quiet — it logs `Permission denied`, disables TLS, and serves plain `ws://`, which
+an https page cannot connect to. Publish a copy the container can read instead,
+with `install-certs.sh`.
+
+Both deploy paths copy that script to `/opt/cowengine/`, so after your first
+deploy attempt it's already on the host. To run it *before* deploying anything,
+fetch it directly:
+
+```bash
+sudo mkdir -p /opt/cowengine
+sudo curl -fsSL -o /opt/cowengine/install-certs.sh \
+  https://raw.githubusercontent.com/<you>/CowEngine/main/deploy/install-certs.sh
+sudo chmod +x /opt/cowengine/install-certs.sh
+```
+
+Then publish the cert (safe to run before the stack exists — it just skips the
+sidecar reload):
+
+```bash
+sudo /opt/cowengine/install-certs.sh game.cowengine.com
+# → /opt/cowengine/tls/{fullchain.pem,privkey.pem}, owned by uid 10001
+```
+
+That's the `TLS_DIR` the compose files mount. The sidecar's uid is pinned to
+**10001** in `Dockerfile.sidecar` precisely so the host can chown to it; don't
+change one without the other.
+
+Install the same script as a certbot deploy hook so renewals keep working — it
+re-copies the PEMs and restarts the sidecar (which only reads them at startup):
+
+```bash
+sudo cp /opt/cowengine/install-certs.sh /etc/letsencrypt/renewal-hooks/deploy/cowengine.sh
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/cowengine.sh
+```
+
 ### 1c. Ship the images from your workstation
 
 `deploy/deploy.sh` builds both images locally, streams them over SSH
@@ -101,21 +138,16 @@ sudo certbot certonly --standalone -d game.cowengine.com
 deploy/deploy.sh ubuntu@game.cowengine.com
 ```
 
-The first run stops after seeding `/opt/cowengine/.env` (exit 3). Fill it in on
-the VPS — at minimum `COW_DOMAIN` — then rerun the same command:
+The first run stops after seeding `/opt/cowengine/.env` (exit 3). Review it on the
+VPS, then rerun the same command:
 
 ```bash
 ssh ubuntu@game.cowengine.com 'nano /opt/cowengine/.env'
-# COW_DOMAIN=game.cowengine.com     (cert is read from $TLS_DIR/live/$COW_DOMAIN/)
-# TLS_DIR=/etc/letsencrypt
+# TLS_DIR=/opt/cowengine/tls        (what install-certs.sh populates — not /etc/letsencrypt)
 # COW_ALLOWED_ORIGINS=https://cowengine.com
 # COW_JOIN_KEY=                     (set for friends-only)
 deploy/deploy.sh ubuntu@game.cowengine.com
 ```
-
-> Mount the **whole** `/etc/letsencrypt` tree, not `live/<domain>`: certbot makes
-> `live/<domain>/*.pem` relative symlinks into `../../archive/`, which dangle
-> inside a container that only has the leaf directory.
 
 Images are tagged with the current git short SHA and pinned into `.env`, so
 `docker images` on the host is a deploy history and rollback is a one-line edit
@@ -151,7 +183,7 @@ Set these in **Settings → Secrets and variables → Actions → Secrets**:
 Two more things:
 - **Seed `/opt/cowengine/.env` once** before the first CI deploy (run
   `deploy/deploy.sh` from your workstation, or `cp .env.example .env` on the host
-  and set `COW_DOMAIN`). The workflow refuses to start a stack with no `.env`
+  and run `install-certs.sh`). The workflow refuses to start a stack with no `.env`
   rather than guessing your cert path; it only ever rewrites the two
   `COW_*_IMAGE` lines, so your join key and origins survive every deploy.
 - **Make the two GHCR packages public** after the first push (Packages → package
@@ -181,19 +213,15 @@ ssh ubuntu@game.cowengine.com \
 # expect: "cowengine-sidecar: WSS wss://0.0.0.0:8080  ->  udp 127.0.0.1:4433"
 ```
 
-> **Cert renewal:** Let's Encrypt certs last 90 days. `certbot renew` needs
-> `:80`, which nothing here uses, so it renews unattended — but the sidecar only
-> reads the PEMs at startup, so restart it afterwards:
-> ```bash
-> sudo tee /etc/letsencrypt/renewal-hooks/deploy/cowengine.sh >/dev/null <<'EOF'
-> #!/bin/sh
-> cd /opt/cowengine && docker compose -f docker-compose.prod.yml restart sidecar
-> EOF
-> sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/cowengine.sh
-> ```
+> **Cert renewal:** Let's Encrypt certs last 90 days. `certbot renew` needs `:80`,
+> which nothing here uses, so it renews unattended — provided you installed
+> `install-certs.sh` as the deploy hook in [1b](#1b-get-a-certificate-lets-encrypt).
+> The hook re-copies the new PEMs into `TLS_DIR` and restarts the sidecar; without
+> it, renewal succeeds but the sidecar keeps serving the expired cert.
 
 > **Building on the host anyway?** Clone the repo there and use the original
-> `deploy/docker-compose.yml` with `COW_DOMAIN=... docker compose up --build -d`.
+> `deploy/docker-compose.yml` with `docker compose up --build -d` (after
+> `install-certs.sh`).
 > Give it swap first (`fallocate -l 4G /swapfile`…) — the C++ build is the part
 > that OOMs on a 2 GB VPS.
 

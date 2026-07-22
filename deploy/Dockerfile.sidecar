@@ -17,9 +17,14 @@ RUN cargo build --release --features "tls webtransport"
 
 # ---- runtime stage --------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
+# The uid is PINNED because the host has to chown the TLS key to it (see
+# deploy/install-certs.sh). Letting useradd pick means it can move when the base
+# image changes, silently breaking cert reads.
+ARG COW_UID=10001
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --create-home cowengine
+    && groupadd --system --gid "$COW_UID" cowengine \
+    && useradd --system --uid "$COW_UID" --gid "$COW_UID" --create-home cowengine
 COPY --from=build /src/sidecar/target/release/cowengine-sidecar /usr/local/bin/
 USER cowengine
 

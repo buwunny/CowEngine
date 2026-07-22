@@ -27,19 +27,6 @@ on:
         type: choice
         default: both
         options: [both, server, sidecar]
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'include/**'
-      - 'sidecar/**'
-      - 'scenes/**'
-      - 'scripts/**'
-      - 'models/**'
-      - 'CMakeLists.txt'
-      - 'vcpkg.json'
-      - 'deploy/**'
-      - '.github/workflows/backend.yml'
 
 permissions:
   contents: read
@@ -141,13 +128,19 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Copy compose file
+      # Runs before the deploy step so that even a first run that bails on a
+      # missing .env still leaves install-certs.sh + .env.example on the host to
+      # bootstrap with.
+      - name: Copy compose file and helper scripts
         env:
           VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
           DIR: ${{ vars.VPS_DEPLOY_DIR || '/opt/cowengine' }}
         run: |
           ssh -i ~/.ssh/id_deploy "$VPS" "mkdir -p '$DIR'"
-          scp -i ~/.ssh/id_deploy deploy/docker-compose.prod.yml deploy/.env.example "$VPS:$DIR/"
+          scp -i ~/.ssh/id_deploy \
+            deploy/docker-compose.prod.yml deploy/.env.example deploy/install-certs.sh \
+            "$VPS:$DIR/"
+          ssh -i ~/.ssh/id_deploy "$VPS" "chmod +x '$DIR/install-certs.sh'"
 
       - name: Pull and restart on the VPS
         env:
@@ -166,8 +159,12 @@ jobs:
           cd "$DIR"
 
           if [ ! -f .env ]; then
-            echo "::error::$DIR/.env is missing on the host."
-            echo "Seed it once (see DEPLOYMENT.md 1c): cp .env.example .env && edit COW_DOMAIN."
+            echo "::error::$DIR/.env is missing on the host — one-time bootstrap needed."
+            echo "This run already copied .env.example and install-certs.sh to $DIR."
+            echo "On the VPS (see DEPLOYMENT.md 1b/1c):"
+            echo "  cp $DIR/.env.example $DIR/.env      # then review it"
+            echo "  sudo $DIR/install-certs.sh <your-domain>"
+            echo "Then re-run this workflow."
             exit 1
           fi
 
