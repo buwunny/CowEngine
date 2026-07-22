@@ -68,6 +68,7 @@ Any VPS works; these are the OVH-specific bits.
    ssh ubuntu@<vps-ip>
    sudo apt update && sudo apt upgrade -y
    sudo ufw allow OpenSSH
+   sudo ufw allow 80/tcp           # certbot HTTP-01 challenge (see 1b)
    sudo ufw allow 443/tcp          # wss
    sudo ufw allow 4443/udp         # WebTransport (HTTP/3)
    sudo ufw --force enable
@@ -89,6 +90,30 @@ On the VPS, before the stack is running (nothing may hold `:80`/`:443`):
 sudo apt install -y certbot
 sudo certbot certonly --standalone -d game.cowengine.com
 # → /etc/letsencrypt/live/game.cowengine.com/{fullchain.pem,privkey.pem}
+```
+
+`--standalone` binds `:80` for the HTTP-01 challenge, both now **and on every
+renewal** (certbot's systemd timer runs unattended twice a day). Inbound `80/tcp`
+therefore has to stay open, or renewal fails silently and the cert expires 90 days
+later. Nothing in this stack ever listens on `:80` otherwise — certbot binds it for
+a few seconds and releases it — so an open-but-unserved port costs you scan noise
+and nothing else.
+
+Prefer not to leave it open? Two alternatives:
+- **Open it only for the renewal**, via certbot hooks:
+  ```bash
+  sudo certbot renew --pre-hook 'ufw allow 80/tcp' --post-hook 'ufw delete allow 80/tcp'
+  ```
+  (put the flags in `/etc/letsencrypt/renewal/game.cowengine.com.conf` to make the
+  timer use them too, otherwise they only apply to that manual run).
+- **Use DNS-01 and no port at all** — if the domain's DNS is at OVH,
+  `sudo apt install python3-certbot-dns-ovh` plus an API credentials file lets you
+  issue with `--dns-ovh`. More setup, but nothing inbound and wildcards work.
+
+Verify renewal actually works end to end — this exercises the firewall, the
+challenge, and the deploy hook:
+```bash
+sudo certbot renew --dry-run
 ```
 
 **Do not mount `/etc/letsencrypt` into the sidecar.** Certbot keeps `live/` and
@@ -286,6 +311,9 @@ in), and share a magic link `https://cowengine.com/play/?ws=wss://game.cowengine
 - [ ] Open `https://cowengine.com/play` in **two** browsers → each sees the other
       move, and shot cows / scene objects stay in sync.
 - [ ] Reload a tab → it reconnects cleanly and no ghost avatar lingers.
+- [ ] `sudo certbot renew --dry-run` succeeds — proves `:80` is reachable and the
+      deploy hook republishes the cert. A cert that can't renew takes the game
+      offline 90 days later, with no warning before it does.
 - [ ] DevTools console shows `[CowNet] WebSocket connected wss://…` (or
       `WebTransport connected`).
 
