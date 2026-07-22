@@ -35,15 +35,33 @@ if [[ -z "$lineage" ]]; then
 fi
 [[ -f "$lineage/fullchain.pem" ]] || { echo "install-certs: no cert at $lineage" >&2; exit 1; }
 
+# Set ownership by raw uid. COW_UID names a user that exists only *inside* the
+# container, so anything that goes through a name lookup can fail on the host
+# ("install: invalid user: '10001'" — seen on Ubuntu). The leading '+' tells
+# coreutils to skip the lookup and take the number literally; try it as a
+# fallback, since not every chown accepts that form.
+chown_to_uid() {
+    chown "$COW_UID:$COW_UID" "$1" 2>/dev/null \
+        || chown "+$COW_UID:+$COW_UID" "$1"
+}
+
 install -d -m 0755 "$TLS_DIR"
 # `install` copies content, so the live/ symlinks are resolved here.
-install -o "$COW_UID" -g "$COW_UID" -m 0444 "$lineage/fullchain.pem" "$TLS_DIR/fullchain.pem"
-install -o "$COW_UID" -g "$COW_UID" -m 0400 "$lineage/privkey.pem"   "$TLS_DIR/privkey.pem"
+install -m 0444 "$lineage/fullchain.pem" "$TLS_DIR/fullchain.pem"
+install -m 0400 "$lineage/privkey.pem"   "$TLS_DIR/privkey.pem"
+chown_to_uid "$TLS_DIR/fullchain.pem"
+chown_to_uid "$TLS_DIR/privkey.pem"
 echo "install-certs: published $lineage -> $TLS_DIR (owner $COW_UID)"
 
-# Reload the sidecar: it reads the PEMs once, at startup. Never fail the whole
-# script here — as a certbot deploy hook that would report the *renewal* as
-# failed, when in fact the new cert is published and only the reload was missed.
+# Reload the sidecar: it reads the PEMs once, at startup. `restart` (not `up -d`)
+# is deliberate — the PEM paths don't change on renewal, so `up -d` sees identical
+# config and does nothing at all, leaving the old cert loaded. Conversely, if you
+# ever edit TLS_DIR in .env, `restart` keeps the OLD bind mount and you need
+# `up -d` to recreate the container.
+#
+# Never fail the whole script here — as a certbot deploy hook that would report
+# the *renewal* as failed, when in fact the cert is published and only the reload
+# was missed.
 if [[ ! -f "$COMPOSE_DIR/docker-compose.prod.yml" ]]; then
     echo "install-certs: no stack at $COMPOSE_DIR yet — restart the sidecar once it's up" >&2
 elif (cd "$COMPOSE_DIR" && docker compose -f docker-compose.prod.yml restart sidecar); then
