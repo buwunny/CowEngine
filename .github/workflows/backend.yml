@@ -1,0 +1,205 @@
+name: Deploy backend to VPS
+
+# Builds the headless server + transport sidecar images, pushes them to GHCR,
+# then tells the VPS to pull and restart. Nothing is compiled on the VPS.
+#
+# Required repository SECRETS (Settings > Secrets and variables > Actions):
+#   VPS_HOST          game.cowengine.com   (or the bare IP)
+#   VPS_USER          ubuntu
+#   VPS_SSH_KEY       private key whose public half is in the VPS's authorized_keys
+# Optional secrets:
+#   VPS_KNOWN_HOSTS   output of `ssh-keyscan <host>`; pins the host key. Without
+#                     it the workflow trusts on first use (fine, but weaker).
+#   GHCR_PULL_TOKEN   read:packages PAT, only needed if the GHCR packages are
+#                     private. Simpler: make them public once, after the first
+#                     push (Packages > package > Settings > Change visibility).
+# Optional variables:
+#   VPS_DEPLOY_DIR    defaults to /opt/cowengine
+#
+# One-time host setup is in DEPLOYMENT.md section 1a/1b (Docker, ufw, certbot,
+# and a .env — the first `deploy/deploy.sh` run seeds it).
+
+on:
+  workflow_dispatch:
+    inputs:
+      images:
+        description: Which images to build and deploy
+        type: choice
+        default: both
+        options: [both, server, sidecar]
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'sidecar/**'
+      - 'scenes/**'
+      - 'scripts/**'
+      - 'models/**'
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+      - 'deploy/**'
+      - '.github/workflows/backend.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+# Never let two deploys race on the same host.
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      server_image: ${{ steps.meta.outputs.server_image }}
+      sidecar_image: ${{ steps.meta.outputs.sidecar_image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute image names
+        id: meta
+        run: |
+          # GHCR requires a lowercase path; org/user names may not be.
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          tag="${GITHUB_SHA::7}"
+          echo "server_image=$REGISTRY/$owner/cowengine-server:$tag"   >> "$GITHUB_OUTPUT"
+          echo "sidecar_image=$REGISTRY/$owner/cowengine-sidecar:$tag" >> "$GITHUB_OUTPUT"
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag"     >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The C++ image is a ~10 min cold build (vcpkg + Bullet); the layer cache
+      # makes repeat runs minutes faster when only game sources changed.
+      - name: Build and push server
+        if: inputs.images != 'sidecar'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.server
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.server_image }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/cowengine-server:latest
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+      - name: Build and push sidecar
+        if: inputs.images != 'server'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.sidecar
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.sidecar_image }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/cowengine-sidecar:latest
+          cache-from: type=gha,scope=sidecar
+          cache-to: type=gha,scope=sidecar,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production      # add required reviewers here to gate deploys
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          test -n "$SSH_KEY" || { echo "::error::secret VPS_SSH_KEY is not set"; exit 1; }
+          test -n "$VPS_HOST" || { echo "::error::secret VPS_HOST is not set"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::VPS_KNOWN_HOSTS unset — trusting the host key on first use"
+            ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Copy compose file
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          DIR: ${{ vars.VPS_DEPLOY_DIR || '/opt/cowengine' }}
+        run: |
+          ssh -i ~/.ssh/id_deploy "$VPS" "mkdir -p '$DIR'"
+          scp -i ~/.ssh/id_deploy deploy/docker-compose.prod.yml deploy/.env.example "$VPS:$DIR/"
+
+      - name: Pull and restart on the VPS
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          DIR: ${{ vars.VPS_DEPLOY_DIR || '/opt/cowengine' }}
+          SERVER_IMAGE: ${{ needs.build.outputs.server_image }}
+          SIDECAR_IMAGE: ${{ needs.build.outputs.sidecar_image }}
+          WANT: ${{ inputs.images || 'both' }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          ssh -i ~/.ssh/id_deploy "$VPS" \
+              DIR="$DIR" SERVER_IMAGE="$SERVER_IMAGE" SIDECAR_IMAGE="$SIDECAR_IMAGE" \
+              WANT="$WANT" GHCR_USER="$GHCR_USER" GHCR_TOKEN="$GHCR_TOKEN" \
+              'bash -seu' <<'REMOTE'
+          cd "$DIR"
+
+          if [ ! -f .env ]; then
+            echo "::error::$DIR/.env is missing on the host."
+            echo "Seed it once (see DEPLOYMENT.md 1c): cp .env.example .env && edit COW_DOMAIN."
+            exit 1
+          fi
+
+          # Only needed while the GHCR packages are private.
+          if [ -n "${GHCR_TOKEN:-}" ]; then
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          fi
+
+          pin() {  # pin KEY VALUE — replace or append, leaving other settings alone
+            if grep -q "^$1=" .env; then
+              sed -i "s|^$1=.*|$1=$2|" .env
+            else
+              printf '%s=%s\n' "$1" "$2" >> .env
+            fi
+          }
+          if [ "$WANT" != sidecar ]; then pin COW_SERVER_IMAGE  "$SERVER_IMAGE"; fi
+          if [ "$WANT" != server ];  then pin COW_SIDECAR_IMAGE "$SIDECAR_IMAGE"; fi
+
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d
+          docker compose -f docker-compose.prod.yml ps
+
+          # Keep a week of previous images for rollback; reclaim the rest so a
+          # small VPS disk doesn't fill up over many deploys.
+          docker image prune -af --filter "until=168h" >/dev/null || true
+          REMOTE
+
+      - name: Verify the sidecar came up
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          DIR: ${{ vars.VPS_DEPLOY_DIR || '/opt/cowengine' }}
+        run: |
+          sleep 5
+          ssh -i ~/.ssh/id_deploy "$VPS" \
+            "cd '$DIR' && docker compose -f docker-compose.prod.yml logs --tail=20 sidecar"

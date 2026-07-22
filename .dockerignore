@@ -1,0 +1,18 @@
+# Keep the build context small — Dockerfile.server does `COPY . .`, and without
+# this the local build/ tree alone is multiple GB of context per build.
+build/
+dist/
+CMakeFiles/
+CMakeCache.txt
+vcpkg_installed/
+sidecar/target/
+.git/
+.github/
+.vscode/
+imgui.ini
+
+# Client/editor-only assets and docs — neither backend image installs them.
+# (third_party/ and tools/ are kept: small, and referenced from the build tree.)
+engine_assets/
+deploy/landing/
+*.md

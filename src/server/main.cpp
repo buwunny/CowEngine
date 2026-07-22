@@ -38,6 +38,11 @@ namespace
 
 int main(int argc, char **argv)
 {
+    // Under Docker/systemd stdout is a pipe, so it is block-buffered and log
+    // lines sit in the buffer indefinitely on a long-running process — `docker
+    // logs` would show nothing. Flush every insertion; this server logs rarely.
+    std::cout << std::unitbuf;
+
     uint16_t port = 4433;
     std::string scenePath = "scenes/scene.json";
     if (argc > 1)

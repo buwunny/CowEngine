@@ -1,25 +1,22 @@
-# CowEngine multiplayer stack: the headless C++ server (internal UDP only) plus
-# the public transport sidecar (wss:// + WebTransport). Run from the repo root:
+# Production stack for a remote host (e.g. an OVHcloud VPS).
 #
-#   COW_DOMAIN=game.cowengine.com \
-#     docker compose -f deploy/docker-compose.yml up --build -d
+# Unlike docker-compose.yml (which BUILDS from source), this file only pulls/runs
+# prebuilt images — nothing is compiled on the VPS. Ship images with
+# `deploy/deploy.sh` and run from the deploy directory on the host:
 #
-# Expects certbot's standard layout under TLS_DIR (default /etc/letsencrypt),
-# i.e. live/$COW_DOMAIN/{fullchain,privkey}.pem.
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Settings come from a `.env` file sitting next to this one (see .env.example).
 
 services:
   server:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.server
+    image: "${COW_SERVER_IMAGE:-cowengine-server:latest}"
     restart: unless-stopped
     networks: [cownet]
     # No published ports: only the sidecar (same network) talks to it over UDP.
 
   sidecar:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.sidecar
+    image: "${COW_SIDECAR_IMAGE:-cowengine-sidecar:latest}"
     restart: unless-stopped
     depends_on: [server]
     networks: [cownet]
@@ -27,19 +24,18 @@ services:
       COW_SERVER: "server:4433"       # resolves to the server service on cownet
       COW_WS: "0.0.0.0:8080"          # wss listener (behind the :443 mapping)
       COW_WT: "0.0.0.0:4443"          # WebTransport / HTTP-3
-      COW_TLS_CERT: "/tls/live/${COW_DOMAIN:?set COW_DOMAIN to your cert's domain}/fullchain.pem"
+      COW_TLS_CERT: "/tls/live/${COW_DOMAIN:?set COW_DOMAIN in .env}/fullchain.pem"
       COW_TLS_KEY: "/tls/live/${COW_DOMAIN}/privkey.pem"
-      # Access control (all optional). Lock connections to your site's origin,
-      # optionally require a shared ?key=, and cap connections per IP.
       COW_ALLOWED_ORIGINS: "${COW_ALLOWED_ORIGINS:-https://cowengine.com}"
       COW_JOIN_KEY: "${COW_JOIN_KEY:-}"          # set for a friends-only gate
       COW_MAX_CONN_PER_IP: "${COW_MAX_CONN_PER_IP:-8}"
     volumes:
       # certbot's live/<domain>/*.pem are RELATIVE symlinks into ../../archive/,
-      # so mount the whole tree — mounting just live/<domain> yields dangling links.
+      # so the whole /etc/letsencrypt tree has to be mounted — mounting just
+      # live/<domain> hands the container dangling links.
       - "${TLS_DIR:-/etc/letsencrypt}:/tls:ro"
     ports:
-      - "443:8080"        # public wss://game.cowengine.com
+      - "443:8080"        # public wss://game.<your-domain>
       - "4443:4443/udp"   # public WebTransport (HTTP/3 needs inbound UDP)
 
 networks:

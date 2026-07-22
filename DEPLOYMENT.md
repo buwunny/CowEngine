@@ -30,18 +30,145 @@ for local dev from `http://localhost`.
 - A DNS record: `game.cowengine.com` → your host's IP.
 - A TLS certificate for `game.cowengine.com` (Let's Encrypt below).
 
-### Get a certificate (Let's Encrypt)
+There are two ways to run it:
+
+| | Build on the host | **Ship prebuilt images** (recommended) |
+| --- | --- | --- |
+| Compose file | `deploy/docker-compose.yml` (`build:`) | `deploy/docker-compose.prod.yml` (`image:`) |
+| Host needs | full toolchain, vcpkg, ~15 min, >2 GB RAM | Docker only |
+| How | `docker compose up --build -d` | `deploy/deploy.sh user@host` |
+
+A small VPS will spend 10–20 minutes (and can OOM) compiling Bullet + vcpkg, so
+prefer the second column. **Don't copy bare binaries** — the server links your
+workstation's glibc/libstdc++ and won't run on the VPS's older ones; the image
+carries its own userland, which is the whole point.
+
+### 1a. Provision the VPS (OVHcloud)
+
+Any VPS works; these are the OVH-specific bits.
+
+1. **Order** — VPS-2 (2 vCPU / 4 GB) or larger, **Debian 12** or **Ubuntu 24.04**,
+   with your SSH key. OVH VPS instances are x86_64, which matches what
+   `deploy.sh` builds (`--platform linux/amd64`).
+2. **DNS** — in the OVH Control Panel → *Domains* → your zone, add an `A` record
+   `game` → the VPS IPv4 (and `AAAA` → its IPv6 if you want). If the domain is
+   registered elsewhere, add it there instead. Also set the VPS's **reverse DNS**
+   to `game.cowengine.com` (VPS → *IPs* → edit reverse) — not required, but it
+   keeps TLS/abuse tooling happy.
+3. **OVH Network Firewall** — leave it **disabled** unless you need it. It is
+   *stateless*, so enabling it means writing explicit rules for return traffic
+   and it is a common cause of "wss connects but QUIC/UDP doesn't". Filter on the
+   host with `ufw` instead. If you do enable it, permit `tcp/22`, `tcp/443`,
+   `udp/4443` inbound plus established TCP.
+4. **Anti-DDoS (VAC)** is always on and can't be turned off. Under mitigation it
+   may drop unsolicited UDP, which only affects the WebTransport path — clients
+   fall back to `wss://` automatically.
+5. **Harden + firewall on the host:**
+   ```bash
+   ssh ubuntu@<vps-ip>
+   sudo apt update && sudo apt upgrade -y
+   sudo ufw allow OpenSSH
+   sudo ufw allow 443/tcp          # wss
+   sudo ufw allow 4443/udp         # WebTransport (HTTP/3)
+   sudo ufw --force enable
+   ```
+   > Docker publishes ports by writing its own iptables rules that bypass `ufw`,
+   > so the container ports are reachable regardless — `ufw` here protects
+   > *everything else* on the box. Keep the server container unpublished (the
+   > prod compose file already does) so `4433/udp` is never exposed.
+6. **Install Docker** (official repo, not the distro's old `docker.io`):
+   ```bash
+   curl -fsSL https://get.docker.com | sudo sh
+   sudo usermod -aG docker "$USER" && exit   # re-login for the group to apply
+   ```
+
+### 1b. Get a certificate (Let's Encrypt)
+
+On the VPS, before the stack is running (nothing may hold `:80`/`:443`):
 ```bash
+sudo apt install -y certbot
 sudo certbot certonly --standalone -d game.cowengine.com
 # → /etc/letsencrypt/live/game.cowengine.com/{fullchain.pem,privkey.pem}
 ```
 
-### Run the stack
-From the repo root:
+### 1c. Ship the images from your workstation
+
+`deploy/deploy.sh` builds both images locally, streams them over SSH
+(`docker save | gzip | ssh docker load` — no registry account needed), installs
+`docker-compose.prod.yml` + `.env` under `/opt/cowengine`, and restarts the stack.
+
 ```bash
-TLS_DIR=/etc/letsencrypt/live/game.cowengine.com \
-  docker compose -f deploy/docker-compose.yml up --build -d
+deploy/deploy.sh ubuntu@game.cowengine.com
 ```
+
+The first run stops after seeding `/opt/cowengine/.env` (exit 3). Fill it in on
+the VPS — at minimum `COW_DOMAIN` — then rerun the same command:
+
+```bash
+ssh ubuntu@game.cowengine.com 'nano /opt/cowengine/.env'
+# COW_DOMAIN=game.cowengine.com     (cert is read from $TLS_DIR/live/$COW_DOMAIN/)
+# TLS_DIR=/etc/letsencrypt
+# COW_ALLOWED_ORIGINS=https://cowengine.com
+# COW_JOIN_KEY=                     (set for friends-only)
+deploy/deploy.sh ubuntu@game.cowengine.com
+```
+
+> Mount the **whole** `/etc/letsencrypt` tree, not `live/<domain>`: certbot makes
+> `live/<domain>/*.pem` relative symlinks into `../../archive/`, which dangle
+> inside a container that only has the leaf directory.
+
+Images are tagged with the current git short SHA and pinned into `.env`, so
+`docker images` on the host is a deploy history and rollback is a one-line edit
+plus `docker compose -f docker-compose.prod.yml up -d`.
+
+Useful flags:
+
+| Flag | Effect |
+| --- | --- |
+| `--sidecar-only` / `--server-only` | Build+ship one image (the sidecar is ~1 min, the server ~10). |
+| `--no-build --tag <sha>` | Re-point the host at an image it already has. |
+| `--registry ghcr.io/you` | Push/pull through a registry instead of streaming over SSH. Do this once CI builds the images. |
+| `--remote-dir /srv/cow` | Somewhere other than `/opt/cowengine`. |
+
+### 1d. Automatic deploys from GitHub Actions (optional)
+
+[`Deploy backend to VPS`](.github/workflows/backend.yml) does the same thing from
+CI: builds both images, pushes them to **GHCR**, then SSHes to the VPS to pull and
+restart. It runs on **push to `main`** (only when backend paths change) and on
+manual dispatch — the dispatch form has an *images* choice so you can redeploy
+just the sidecar.
+
+Set these in **Settings → Secrets and variables → Actions → Secrets**:
+
+| Secret | Value |
+| --- | --- |
+| `VPS_HOST` | `game.cowengine.com` (or the IP) |
+| `VPS_USER` | `ubuntu` |
+| `VPS_SSH_KEY` | A **deploy-only** private key. Generate with `ssh-keygen -t ed25519 -f cow-deploy -N ''`, append `cow-deploy.pub` to the VPS's `~/.ssh/authorized_keys`, paste `cow-deploy` here. |
+| `VPS_KNOWN_HOSTS` | *(optional)* `ssh-keyscan game.cowengine.com` output — pins the host key instead of trusting on first use. |
+| `GHCR_PULL_TOKEN` | *(optional)* `read:packages` PAT, only if the GHCR packages stay private. |
+
+Two more things:
+- **Seed `/opt/cowengine/.env` once** before the first CI deploy (run
+  `deploy/deploy.sh` from your workstation, or `cp .env.example .env` on the host
+  and set `COW_DOMAIN`). The workflow refuses to start a stack with no `.env`
+  rather than guessing your cert path; it only ever rewrites the two
+  `COW_*_IMAGE` lines, so your join key and origins survive every deploy.
+- **Make the two GHCR packages public** after the first push (Packages → package
+  → *Package settings* → *Change visibility*) so the VPS pulls without
+  credentials. Otherwise set `GHCR_PULL_TOKEN`.
+
+The job targets a `production` environment, so you can add required reviewers
+under **Settings → Environments → production** if you'd rather approve each
+deploy. Images are tagged with the commit SHA (plus `latest`), previous images
+are kept for a week, so a rollback is editing `COW_SERVER_IMAGE` in `.env` and
+re-running `up -d`.
+
+> This workflow is independent of the Pages one — the site and the backend
+> deploy separately. Bumping `kProtocolVersion` means you must ship **both**, or
+> the version check refuses every client.
+
+### 1e. What's running
 - `server` — internal only, no published ports; the sidecar reaches it over the
   compose network at `server:4433`.
 - `sidecar` — publishes `443:8080` (wss) and `4443:4443/udp` (WebTransport), and
@@ -49,13 +176,26 @@ TLS_DIR=/etc/letsencrypt/live/game.cowengine.com \
 
 Check it:
 ```bash
-docker compose -f deploy/docker-compose.yml logs -f sidecar
+ssh ubuntu@game.cowengine.com \
+  'cd /opt/cowengine && docker compose -f docker-compose.prod.yml logs -f sidecar'
 # expect: "cowengine-sidecar: WSS wss://0.0.0.0:8080  ->  udp 127.0.0.1:4433"
 ```
 
-> **Cert renewal:** Let's Encrypt certs last 90 days. After `certbot renew`,
-> restart the sidecar (`docker compose ... restart sidecar`) so it reloads the
-> PEM files. (Automate via a renew hook if you like.)
+> **Cert renewal:** Let's Encrypt certs last 90 days. `certbot renew` needs
+> `:80`, which nothing here uses, so it renews unattended — but the sidecar only
+> reads the PEMs at startup, so restart it afterwards:
+> ```bash
+> sudo tee /etc/letsencrypt/renewal-hooks/deploy/cowengine.sh >/dev/null <<'EOF'
+> #!/bin/sh
+> cd /opt/cowengine && docker compose -f docker-compose.prod.yml restart sidecar
+> EOF
+> sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/cowengine.sh
+> ```
+
+> **Building on the host anyway?** Clone the repo there and use the original
+> `deploy/docker-compose.yml` with `COW_DOMAIN=... docker compose up --build -d`.
+> Give it swap first (`fallocate -l 4G /swapfile`…) — the C++ build is the part
+> that OOMs on a 2 GB VPS.
 
 ---
 
@@ -112,6 +252,8 @@ in), and share a magic link `https://cowengine.com/play/?ws=wss://game.cowengine
 ## 3. Verification checklist
 - [ ] `dig game.cowengine.com` resolves to the host IP.
 - [ ] `openssl s_client -connect game.cowengine.com:443` shows the real cert.
+- [ ] `docker compose -f docker-compose.prod.yml ps` on the host shows both
+      services `running` (the server should never show a published port).
 - [ ] Sidecar log shows `WSS wss://...`; server log shows `listening ... (scene: ...)`.
 - [ ] Open `https://cowengine.com/play` in **two** browsers → each sees the other
       move, and shot cows / scene objects stay in sync.
