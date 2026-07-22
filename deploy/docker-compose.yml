@@ -28,6 +28,11 @@ services:
       COW_WT: "0.0.0.0:4443"          # WebTransport / HTTP-3
       COW_TLS_CERT: "/tls/fullchain.pem"
       COW_TLS_KEY: "/tls/privkey.pem"
+      # Access control (all optional). Lock connections to your site's origin,
+      # optionally require a shared ?key=, and cap connections per IP.
+      COW_ALLOWED_ORIGINS: "${COW_ALLOWED_ORIGINS:-https://cowengine.com}"
+      COW_JOIN_KEY: "${COW_JOIN_KEY:-}"          # set for a friends-only gate
+      COW_MAX_CONN_PER_IP: "${COW_MAX_CONN_PER_IP:-8}"
     volumes:
       - "${TLS_DIR:?set TLS_DIR to your cert directory}:/tls:ro"
     ports:

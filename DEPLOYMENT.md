@@ -89,6 +89,26 @@ still opt in with `?ws=wss://host` / `?wt=https://host:4443` query params.
 
 ---
 
+## Access control & bandwidth
+
+The server sends snapshots at **20 Hz** (physics still runs at 60 Hz; clients
+interpolate, so it's invisible) and omits velocity from replicated entities —
+together roughly a **4× cut** in egress vs. the naive 60 Hz full state.
+
+The sidecar gates every connection (WS **and** WebTransport) via env vars — none
+of this is strong auth (the web client is public), but it keeps casual abuse and
+resource exhaustion out:
+
+| Var | Example | Effect |
+| --- | --- | --- |
+| `COW_ALLOWED_ORIGINS` | `https://cowengine.com` | Reject connections whose `Origin` isn't listed (comma-separated). Empty = allow any. |
+| `COW_JOIN_KEY` | `s3cret` | Require `?key=s3cret` on the connect URL. **For a friends-only server, set this and don't bake it into the published page** — hand out `…/play/?key=s3cret` instead. Empty = off. |
+| `COW_MAX_CONN_PER_IP` | `8` | Cap concurrent connections per client IP (0 = unlimited). |
+
+For a friends-only deploy: set `COW_JOIN_KEY`, **leave `COWENGINE_SERVER_WS` unset**
+in the Pages workflow (so the public page ships single-player with no server baked
+in), and share a magic link `https://cowengine.com/play/?ws=wss://game.cowengine.com&key=s3cret`.
+
 ## 3. Verification checklist
 - [ ] `dig game.cowengine.com` resolves to the host IP.
 - [ ] `openssl s_client -connect game.cowengine.com:443` shows the real cert.

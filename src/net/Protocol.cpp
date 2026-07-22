@@ -61,7 +61,8 @@ namespace net
                 w.u32(e.netId);
                 w.vec3(e.pos);
                 w.quat(e.rot);
-                w.vec3(e.vel);
+                // Velocity is intentionally NOT sent: remote/scene bodies are
+                // interpolated by position, and it's dead weight per entity.
             }
         }
         void writeBody(ByteWriter &w, const PlayerJoin &m) { w.u32(m.netId); }
@@ -130,7 +131,7 @@ namespace net
             m.ackSeq = r.u32();
             uint16_t count = r.u16();
             // Guard against a corrupt count claiming more entities than the
-            // buffer could possibly hold (44 bytes each) before reserving.
+            // buffer could possibly hold (32 bytes each) before reserving.
             if (!r.ok)
                 return std::nullopt;
             m.entities.reserve(count);
@@ -140,7 +141,7 @@ namespace net
                 e.netId = r.u32();
                 e.pos = r.vec3();
                 e.rot = r.quat();
-                e.vel = r.vec3();
+                // vel not on the wire (see writeBody); leave default 0.
                 m.entities.push_back(e);
             }
             out = m;

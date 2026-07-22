@@ -218,13 +218,12 @@ net::Snapshot GameServer::buildSnapshot(uint32_t ackSeq) const
         const btTransform &xf = p.body->getWorldTransform();
         const btVector3 &o = xf.getOrigin();
         const btQuaternion q = xf.getRotation();
-        const btVector3 &v = p.body->getLinearVelocity();
 
         net::EntityState es;
         es.netId = view.get<const ecs::NetId>(e).id;
         es.pos = {o.x(), o.y(), o.z()};
         es.rot = glm::quat(q.w(), q.x(), q.y(), q.z());
-        es.vel = {v.x(), v.y(), v.z()};
+        // es.vel left default: velocity is no longer replicated (see Protocol).
 
         // For player entities the upright capsule body carries no meaningful
         // yaw, so replace the rotation with the player's look heading: a
@@ -383,7 +382,12 @@ void GameServer::tick(float dt)
     // entity list once, then split it into datagram-sized chunks (see
     // net::kMaxSnapshotEntities) so a large world never overflows an unreliable
     // datagram and gets truncated + dropped wholesale by the client's decoder.
-    if (send_)
+    //
+    // Snapshots go out at snapshotHz_ (< tickRate_), not every tick — the client
+    // interpolates ~interpDelay behind real time, so a lower rate is invisible but
+    // cuts server egress proportionally. Reliable spawn/despawn are unaffected.
+    const uint32_t snapDivisor = std::max<uint32_t>(1u, tickRate_ / std::max<uint16_t>(1, snapshotHz_));
+    if (send_ && (serverTick_ % snapDivisor == 0))
     {
         const net::Snapshot world = buildSnapshot(0);
         for (const auto &[id, s] : sessions_)

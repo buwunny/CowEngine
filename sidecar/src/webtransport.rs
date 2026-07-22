@@ -13,7 +13,7 @@ use std::time::Duration;
 use anyhow::Result;
 use base64::Engine;
 use tokio::sync::mpsc;
-use wtransport::endpoint::IncomingSession;
+use wtransport::endpoint::{IncomingSession, SessionRequest};
 use wtransport::tls::Sha256DigestFmt;
 use wtransport::{Endpoint, Identity, ServerConfig};
 
@@ -68,6 +68,31 @@ pub async fn run(bind_addr: String, relay: Arc<Relay>) -> Result<()> {
 
 async fn handle(incoming: IncomingSession, relay: Arc<Relay>) -> Result<()> {
     let session_request = incoming.await?;
+    let ip = session_request.remote_address().ip();
+
+    // Same access gate as the WS path: Origin allow-list, join key, per-IP cap.
+    if !relay.cfg.origin_allowed(session_request.origin()) {
+        println!("wt refused {ip}: origin not allowed ({:?})", session_request.origin());
+        session_request.forbidden().await;
+        return Ok(());
+    }
+    if !relay.cfg.key_ok(Some(session_request.path())) {
+        println!("wt refused {ip}: missing/invalid join key");
+        session_request.forbidden().await;
+        return Ok(());
+    }
+    if !relay.acquire_ip(ip).await {
+        println!("wt refused {ip}: per-IP connection cap reached");
+        session_request.too_many_requests().await;
+        return Ok(());
+    }
+
+    let result = handle_accepted(session_request, &relay).await;
+    relay.release_ip(ip).await;
+    result
+}
+
+async fn handle_accepted(session_request: SessionRequest, relay: &Arc<Relay>) -> Result<()> {
     let connection = Arc::new(session_request.accept().await?);
 
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<(u8, Vec<u8>)>();
@@ -98,7 +123,7 @@ async fn handle(incoming: IncomingSession, relay: Arc<Relay>) -> Result<()> {
     });
 
     // browser -> server
-    let result = pump_incoming(&connection, &relay, session).await;
+    let result = pump_incoming(&connection, relay, session).await;
 
     relay.to_server(session, KIND_DISCONNECT, &[]).await;
     relay.deregister(session).await;

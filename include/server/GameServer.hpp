@@ -86,6 +86,7 @@ private:
     double scriptTime_ = 0.0;
     double serverTime_ = 0.0;  // wall-clock sim time, for idle timeouts
     uint16_t tickRate_ = 60;
+    uint16_t snapshotHz_ = 20;  // snapshots sent at this rate (physics still tickRate_); clients interpolate
     uint16_t maxPlayers_ = 16; // room capacity; further joins are refused
     double idleTimeout_ = 10.0; // despawn a session silent for this long (missed disconnect)
     bool ready_ = false;

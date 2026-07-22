@@ -14,15 +14,19 @@
 //      COW_WT (default 0.0.0.0:4443, WebTransport; requires --features webtransport).
 //      COW_TLS_CERT + COW_TLS_KEY (PEM paths; requires --features tls) upgrade the
 //      WS listener to wss:// — needed to connect from an https origin.
+// Access gate (both transports): COW_ALLOWED_ORIGINS (comma list, empty=any),
+//      COW_JOIN_KEY (require ?key=<val>; empty=off), COW_MAX_CONN_PER_IP (default 8).
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::{mpsc, Mutex};
+use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tokio_tungstenite::tungstenite::http::{Response as HttpResponse, StatusCode};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 const KIND_CONNECT: u8 = 0;
@@ -36,23 +40,117 @@ const CH_RELIABLE: u8 = 1;
 /// Outgoing message queued toward one browser connection: (channel, payload).
 type OutTx = mpsc::UnboundedSender<(u8, Vec<u8>)>;
 
+/// Access-control gate applied to every browser connection (WS + WebTransport).
+/// None of this is strong auth — the web client is public — but it keeps casual
+/// abuse and resource exhaustion out.
+struct GateConfig {
+    /// Allowed `Origin` header values (exact match). Empty = allow any origin.
+    allowed_origins: Vec<String>,
+    /// If set, connections must carry `?key=<value>` matching this. Keep it out
+    /// of the published page for a friends-only gate; leave unset for public.
+    join_key: Option<String>,
+    /// Max concurrent connections from one client IP (0 = unlimited).
+    max_conn_per_ip: u32,
+}
+
+impl GateConfig {
+    fn from_env() -> Self {
+        let allowed_origins = std::env::var("COW_ALLOWED_ORIGINS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let join_key = std::env::var("COW_JOIN_KEY").ok().filter(|s| !s.is_empty());
+        let max_conn_per_ip = std::env::var("COW_MAX_CONN_PER_IP")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(8);
+        GateConfig { allowed_origins, join_key, max_conn_per_ip }
+    }
+
+    fn origin_allowed(&self, origin: Option<&str>) -> bool {
+        if self.allowed_origins.is_empty() {
+            return true; // no allow-list configured
+        }
+        origin.map_or(false, |o| self.allowed_origins.iter().any(|a| a == o))
+    }
+
+    fn key_ok(&self, query: Option<&str>) -> bool {
+        match &self.join_key {
+            None => true,
+            Some(k) => query_has_key(query, k),
+        }
+    }
+}
+
+/// True if `query` (a URL query string, or a path containing one) has `key=<want>`.
+fn query_has_key(query: Option<&str>, want: &str) -> bool {
+    let q = match query {
+        Some(q) => q,
+        None => return false,
+    };
+    q.split(['?', '&'])
+        .filter_map(|kv| kv.split_once('='))
+        .any(|(k, v)| k == "key" && v == want)
+}
+
+/// Build a 403 handshake rejection for the WS gate callback.
+fn reject_403(msg: String) -> ErrorResponse {
+    HttpResponse::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Some(msg))
+        .expect("valid 403 response")
+}
+
 /// Shared relay state: the single UDP socket to the C++ server plus the live
 /// session table used to route server replies back to the right browser.
 struct Relay {
     udp: UdpSocket,
     sessions: Mutex<HashMap<u32, OutTx>>,
+    conns_per_ip: Mutex<HashMap<IpAddr, u32>>,
     next_id: AtomicU32,
+    cfg: GateConfig,
 }
 
 impl Relay {
-    async fn new(server_addr: SocketAddr) -> std::io::Result<Arc<Self>> {
+    async fn new(server_addr: SocketAddr, cfg: GateConfig) -> std::io::Result<Arc<Self>> {
         let udp = UdpSocket::bind(("0.0.0.0", 0)).await?;
         udp.connect(server_addr).await?;
         Ok(Arc::new(Relay {
             udp,
             sessions: Mutex::new(HashMap::new()),
+            conns_per_ip: Mutex::new(HashMap::new()),
             next_id: AtomicU32::new(1),
+            cfg,
         }))
+    }
+
+    /// Reserve a connection slot for `ip`. Returns false if the per-IP cap is hit.
+    async fn acquire_ip(&self, ip: IpAddr) -> bool {
+        if self.cfg.max_conn_per_ip == 0 {
+            return true;
+        }
+        let mut map = self.conns_per_ip.lock().await;
+        let n = map.entry(ip).or_insert(0);
+        if *n >= self.cfg.max_conn_per_ip {
+            return false;
+        }
+        *n += 1;
+        true
+    }
+
+    async fn release_ip(&self, ip: IpAddr) {
+        if self.cfg.max_conn_per_ip == 0 {
+            return;
+        }
+        let mut map = self.conns_per_ip.lock().await;
+        if let Some(n) = map.get_mut(&ip) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                map.remove(&ip);
+            }
+        }
     }
 
     fn frame(session: u32, kind: u8, payload: &[u8]) -> Vec<u8> {
@@ -104,16 +202,48 @@ impl Relay {
     }
 }
 
-/// Bridge one accepted WebSocket connection to a UDP session. Generic over the
-/// stream so it serves both plain TCP (ws://) and a TLS-wrapped stream (wss://).
+/// Per-IP admission + WS handshake gate, then bridge. Applies the connection cap
+/// before the handshake and the Origin/key checks during it (a rejected handshake
+/// returns 403 to the browser). Generic over the stream so it serves both plain
+/// TCP (ws://) and a TLS-wrapped stream (wss://).
 async fn handle_ws<S>(stream: S, relay: Arc<Relay>, peer: Option<SocketAddr>)
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let ws = match tokio_tungstenite::accept_async(stream).await {
+    let ip = peer.map(|p| p.ip());
+    if let Some(ip) = ip {
+        if !relay.acquire_ip(ip).await {
+            eprintln!("ws refused {ip}: per-IP connection cap reached");
+            return;
+        }
+    }
+    bridge_ws(stream, &relay, peer).await;
+    if let Some(ip) = ip {
+        relay.release_ip(ip).await;
+    }
+}
+
+async fn bridge_ws<S>(stream: S, relay: &Arc<Relay>, peer: Option<SocketAddr>)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    // Check Origin + join key during the handshake; reject with 403 otherwise.
+    let gate = relay.clone();
+    let ws = match tokio_tungstenite::accept_hdr_async(stream, move |req: &Request, resp: Response| {
+        let origin = req.headers().get("origin").and_then(|v| v.to_str().ok());
+        if !gate.cfg.origin_allowed(origin) {
+            return Err(reject_403(format!("origin not allowed: {origin:?}")));
+        }
+        if !gate.cfg.key_ok(req.uri().query()) {
+            return Err(reject_403("missing or invalid join key".into()));
+        }
+        Ok(resp)
+    })
+    .await
+    {
         Ok(w) => w,
         Err(e) => {
-            eprintln!("ws handshake failed: {e}");
+            eprintln!("ws handshake/gate rejected {peer:?}: {e}");
             return;
         }
     };
@@ -172,7 +302,15 @@ async fn main() {
         .expect("COW_SERVER must be host:port");
     let ws_addr = env_or("COW_WS", "0.0.0.0:8080");
 
-    let relay = Relay::new(server_addr)
+    let cfg = GateConfig::from_env();
+    println!(
+        "access gate: origins={}  join_key={}  max_conn_per_ip={}",
+        if cfg.allowed_origins.is_empty() { "any".into() } else { cfg.allowed_origins.join(",") },
+        if cfg.join_key.is_some() { "required" } else { "none" },
+        if cfg.max_conn_per_ip == 0 { "unlimited".into() } else { cfg.max_conn_per_ip.to_string() },
+    );
+
+    let relay = Relay::new(server_addr, cfg)
         .await
         .expect("failed to open UDP socket to server");
     tokio::spawn(relay.clone().run_udp_reader());
