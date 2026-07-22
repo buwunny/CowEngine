@@ -7,6 +7,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <btBulletDynamicsCommon.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <iostream>
 
 GameServer::GameServer() = default;
@@ -308,14 +310,31 @@ void GameServer::tick(float dt)
 
     ++serverTick_;
 
-    // 3) Broadcast one snapshot per session, each carrying that client's ack.
+    // 3) Broadcast snapshots per session, each carrying that client's ack. The
+    // world state is identical across sessions (only ackSeq differs), so build the
+    // entity list once, then split it into datagram-sized chunks (see
+    // net::kMaxSnapshotEntities) so a large world never overflows an unreliable
+    // datagram and gets truncated + dropped wholesale by the client's decoder.
     if (send_)
     {
+        const net::Snapshot world = buildSnapshot(0);
         for (const auto &[id, s] : sessions_)
         {
             if (!s.spawned)
                 continue;
-            send_(id, buildSnapshot(s.lastSeq));
+            const auto &ents = world.entities;
+            size_t sent = 0;
+            do // send at least one snapshot (possibly empty) so the ack flows
+            {
+                net::Snapshot chunk;
+                chunk.serverTick = serverTick_;
+                chunk.ackSeq = s.lastSeq;
+                size_t n = std::min(net::kMaxSnapshotEntities, ents.size() - sent);
+                chunk.entities.assign(ents.begin() + sent,
+                                      ents.begin() + sent + n);
+                send_(id, net::Message{chunk});
+                sent += n;
+            } while (sent < ents.size());
         }
     }
 }

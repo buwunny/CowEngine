@@ -1,6 +1,7 @@
 #ifndef NET_PROTOCOL_HPP
 #define NET_PROTOCOL_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <variant>
@@ -29,6 +30,15 @@ namespace net
     //   [kSpawnNetIdBase, 2^32)        runtime-spawned objects (announced via SpawnEntity)
     inline constexpr uint32_t kPlayerNetIdBase = 0x40000000u;
     inline constexpr uint32_t kSpawnNetIdBase = 0x60000000u;
+
+    // A Snapshot is sent unreliable (UDP datagram / QUIC datagram), so it must fit
+    // in the smallest datagram along the path. The tightest is the WebTransport
+    // QUIC datagram (~1200 B). Each EntityState is 44 B plus an 11 B header, so we
+    // cap a single Snapshot message at this many entities (~891 B) and split a
+    // larger world across several datagrams. The client folds each entity into its
+    // own sample buffer, so partial snapshots interpolate fine and a dropped chunk
+    // only stalls its own entities for one tick instead of freezing the world.
+    inline constexpr size_t kMaxSnapshotEntities = 20;
 
     // What visual to build for a spawned object the client never created.
     enum class SpawnKind : uint8_t
