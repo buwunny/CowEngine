@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <deque>
 #include <vector>
+#include <string>
 
 using namespace net;
 
@@ -100,15 +101,87 @@ static bool isHidden(Scene &scene, ecs::Entity e)
 
 static const float DT = 1.0f / 60.0f;
 
+// Reproduction against the real scenes/scene.json: after NetClient claims the
+// dynamic (mass>0) scene objects, each must keep a kinematic collider (not a
+// render-only ghost) and render at its authored scale.
+static void checkRealSceneClaim()
+{
+    PhysicsWorld physics;
+    Scene scene;
+    Camera cam(glm::vec3(0, 3, 10), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
+    if (!scene.loadFromJSON("scenes/scene.json"))
+    {
+        printf("  (real-scene repro skipped: scenes/scene.json not found)\n");
+        return;
+    }
+    scene.addRigidBodiesToWorld(physics);
+    scene.addPlayer(&cam, glm::translate(glm::mat4(1.0f), glm::vec3(0, 3, 10)), nullptr, physics);
+    ecs::Entity local = scene.getPlayerEntity();
+
+    // Record the mass>0 scene objects and their authored scale BEFORE claiming.
+    struct Obj { ecs::Entity e; uint32_t id; glm::vec3 scale; std::string name; };
+    std::vector<Obj> dyn;
+    {
+        auto view = scene.registry().view<ecs::Physics, ecs::Identity, ecs::Transform>();
+        for (auto e : view)
+        {
+            if (e == local) continue;
+            if (view.get<ecs::Physics>(e).mass <= 0.0) continue;
+            dyn.push_back({e, (uint32_t)view.get<ecs::Identity>(e).id,
+                           glm::vec3(view.get<ecs::Transform>(e).scale),
+                           view.get<ecs::Identity>(e).name});
+        }
+    }
+    printf("  real scene: %zu dynamic (mass>0) objects to claim\n", dyn.size());
+
+    MockTransport mock;
+    NetClient nc(&mock, &scene, local);
+    mock.inject(ServerWelcome{kPlayerNetIdBase, 0, 60});
+    nc.update(DT);
+
+    // Drive every claimed object with a snapshot at a fresh position.
+    Snapshot s; s.serverTick = 1; s.ackSeq = 1;
+    for (auto &o : dyn) { EntityState es; es.netId = o.id; es.pos = {0, 20, 0}; s.entities.push_back(es); }
+    mock.inject(s);
+    nc.update(DT);
+    physics.stepSimulation(DT, 1);
+    scene.syncFromPhysics();
+
+    auto modelScale = [&](ecs::Entity e) {
+        const glm::mat4 &m = scene.registry().get<ecs::Transform>(e).model;
+        return glm::vec3(glm::length(glm::vec3(m[0])), glm::length(glm::vec3(m[1])),
+                         glm::length(glm::vec3(m[2])));
+    };
+    for (auto &o : dyn)
+    {
+        bool hasBody = false, kin = false;
+        if (auto *p = scene.registry().try_get<ecs::Physics>(o.e))
+        { hasBody = p->body != nullptr; kin = p->body && p->body->isKinematicObject(); }
+        glm::vec3 rs = modelScale(o.e);
+        bool scaleOk = glm::distance(rs, o.scale) < std::max(0.05f, 0.05f * glm::length(o.scale));
+        printf("    %-16s id=%u collider=%d kinematic=%d authoredScale=(%.2f,%.2f,%.2f) render=(%.2f,%.2f,%.2f) %s\n",
+               o.name.c_str(), o.id, hasBody, kin, o.scale.x, o.scale.y, o.scale.z,
+               rs.x, rs.y, rs.z, (hasBody && kin && scaleOk) ? "" : "  <-- BAD");
+        CHECK(hasBody);   // not a render-only ghost
+        CHECK(kin);       // kinematic so physicsSyncSystem won't clobber it
+        CHECK(scaleOk);   // rendered at authored scale
+    }
+}
+
 int main()
 {
+    checkRealSceneClaim();
+
     PhysicsWorld physics;
     Scene scene;
     Camera cam(glm::vec3(0, 3, 10), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
 
     // A dynamic scene body (like Cube 2/3): NetClient should claim it — remove it
     // from the physics world and follow the server. Its netId == Identity.id.
-    ecs::Entity sceneCube = scene.spawnCube(1, glm::translate(glm::mat4(1.0f), glm::vec3(5, 1, 5)),
+    // Scale 5, like "Cube 2" in scenes/scene.json — exercises non-unit scale so a
+    // render-scale regression (rendering at localScale vs net scale) would show.
+    ecs::Entity sceneCube = scene.spawnCube(1, glm::translate(glm::mat4(1.0f), glm::vec3(5, 1, 5)) *
+                                                   glm::scale(glm::mat4(1.0f), glm::vec3(5.0f)),
                                             glm::vec4(1, 0, 0, 1), 1.0f);
     uint32_t sceneCubeNet = scene.registry().get<ecs::Identity>(sceneCube).id;
 
@@ -163,6 +236,29 @@ int main()
     CHECK(std::fabs(cpos.y - 8.0f) < 0.01f); // cube follows server, not gravity/local
     printf("  scene cube y = %.2f (server-driven)\n", cpos.y);
 
+    // The claimed scene cube must: (a) still carry a collider (kinematic body kept
+    // in the world) so it isn't a render-only "ghost"; (b) be marked kinematic so
+    // physicsSyncSystem skips it; (c) render at its NET scale (5), and keep that
+    // scale after a physics step + syncFromPhysics render frame.
+    {
+        auto *cp = scene.registry().try_get<ecs::Physics>(sceneCube);
+        CHECK(cp && cp->body);                              // collider present
+        CHECK(cp && cp->body && cp->body->isKinematicObject());
+        auto cubeScale = [&]() {
+            const glm::mat4 &m = scene.registry().get<ecs::Transform>(sceneCube).model;
+            return glm::vec3(glm::length(glm::vec3(m[0])), glm::length(glm::vec3(m[1])),
+                             glm::length(glm::vec3(m[2])));
+        };
+        glm::vec3 sc0 = cubeScale();
+        physics.stepSimulation(DT, 1);
+        scene.syncFromPhysics();
+        glm::vec3 sc1 = cubeScale();
+        printf("  claimed scene cube scale before/after frame = (%.2f,%.2f,%.2f)/(%.2f,%.2f,%.2f)\n",
+               sc0.x, sc0.y, sc0.z, sc1.x, sc1.y, sc1.z);
+        CHECK(std::fabs(sc0.x - 5.0f) < 0.05f);   // rendered at net scale, not 1
+        CHECK(glm::distance(sc0, sc1) < 0.01f);   // survives a render frame
+    }
+
     // 4) A server-spawned object (SpawnEntity) becomes a proxy and follows snaps.
     // Before its first snapshot it is hidden and has no collider (avoids an
     // origin flash and spawning a kinematic body on top of the player).
@@ -188,6 +284,29 @@ int main()
         glm::vec3 pp = entityPos(scene, proxy);
         CHECK(glm::distance(pp, glm::vec3(2, 2, 2)) < 0.01f);
         printf("  spawned proxy placed at (%.1f,%.1f,%.1f) with collider\n", pp.x, pp.y, pp.z);
+    }
+
+    // The proxy was spawned with net scale 0.1. Its render model must reflect
+    // that scale, and a syncFromPhysics() pass (which runs every render frame and
+    // rebuilds Transform.model from the physics body at the entity's *local*
+    // scale) must NOT clobber it back to scale 1 — that would leave a wrongly
+    // scaled duplicate over the net-driven proxy ("ghost" bug).
+    auto modelScale = [&](ecs::Entity e) {
+        const glm::mat4 &m = scene.registry().get<ecs::Transform>(e).model;
+        return glm::vec3(glm::length(glm::vec3(m[0])), glm::length(glm::vec3(m[1])),
+                         glm::length(glm::vec3(m[2])));
+    };
+    {
+        glm::vec3 s0 = modelScale(proxy);
+        scene.syncFromPhysics();
+        glm::vec3 s1 = modelScale(proxy);
+        printf("  proxy model scale before/after syncFromPhysics = "
+               "(%.2f,%.2f,%.2f)/(%.2f,%.2f,%.2f)\n",
+               s0.x, s0.y, s0.z, s1.x, s1.y, s1.z);
+        CHECK(std::fabs(s0.x - 0.1f) < 0.01f);       // net scale applied
+        CHECK(glm::distance(s0, s1) < 0.001f);       // survives a render frame
+        glm::vec3 pp = entityPos(scene, proxy);
+        CHECK(glm::distance(pp, glm::vec3(2, 2, 2)) < 0.01f); // position too
     }
     nc.update(DT);
 

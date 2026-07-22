@@ -137,7 +137,16 @@ void GameServer::onMessage(uint32_t session, const net::Message &msg)
 
     if (const auto *hello = std::get_if<net::ClientHello>(&msg))
     {
-        (void)hello;
+        // Reject incompatible clients (or a stale client hitting a fresh server):
+        // no ServerWelcome, so it stays unjoined rather than desyncing into ghosts.
+        if (hello->protocolVersion != net::kProtocolVersion)
+        {
+            std::cout << "GameServer: refusing session " << session
+                      << " — protocol v" << hello->protocolVersion
+                      << " != server v" << net::kProtocolVersion
+                      << " (stale binary? rebuild both ends)\n";
+            return;
+        }
         Session &s = sessions_[session];
         if (!s.spawned)
         {

@@ -19,7 +19,11 @@
 // — never reorder or repurpose, since old clients and servers must interoperate.
 namespace net
 {
-    inline constexpr uint16_t kProtocolVersion = 1;
+    // Bumped to 2 for the shared-physics/despawn generation. The server refuses a
+    // ClientHello whose version doesn't match, so a stale binary (an old server
+    // left holding the port, or a browser-cached old client) is rejected loudly
+    // instead of silently interoperating and producing duplicate/ghost objects.
+    inline constexpr uint16_t kProtocolVersion = 2;
 
     // netId ranges partition the replicated-entity id space so a client can tell,
     // from the id alone, what kind of thing a snapshot entry is:
