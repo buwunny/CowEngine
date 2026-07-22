@@ -63,6 +63,12 @@ private:
     // Assign NetIds to newly script-spawned bodies and broadcast SpawnEntity so
     // clients build a visual for each. Called once per tick after scripts run.
     void detectAndAnnounceSpawns();
+    // EnTT on_destroy<NetId> observer: records the netId of any replicated entity
+    // a script (e.g. shoot_cow) destroys, so tick() can broadcast DespawnEntity.
+    void onNetIdDestroyed(ecs::Registry &reg, ecs::Entity e);
+    // Broadcast DespawnEntity for entities destroyed since the last tick and drop
+    // them from the late-join replay list.
+    void flushDespawns();
 
     Scene scene_;
     PhysicsWorld physics_;
@@ -73,6 +79,7 @@ private:
     uint32_t nextPlayerIdx_ = 0;                      // -> net::kPlayerNetIdBase + idx
     uint32_t nextSpawnNetId_ = 0;                     // -> net::kSpawnNetIdBase + counter
     std::vector<net::SpawnEntity> spawnedObjects_;    // for late-join replay
+    std::vector<uint32_t> pendingDespawns_;           // netIds destroyed this tick
     void sweepIdleSessions();
 
     uint32_t serverTick_ = 0;

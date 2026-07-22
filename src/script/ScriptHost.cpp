@@ -83,6 +83,10 @@ void ScriptHost::bindBuiltins(cowscript::Script &script)
     script.setBuiltin("spawn_cube", [this](const std::vector<Value> &a) { return builtinSpawn(a, "cube"); });
     script.setBuiltin("spawn_cow", [this](const std::vector<Value> &a) { return builtinSpawn(a, "cow"); });
     script.setBuiltin("spawn_plane", [this](const std::vector<Value> &a) { return builtinSpawn(a, "plane"); });
+    // destroy(handle) removes another object; destroy_self() / destroy() with no
+    // args removes the entity the script is attached to.
+    script.setBuiltin("destroy", [this](const std::vector<Value> &a) { return builtinDestroy(a); });
+    script.setBuiltin("destroy_self", [this](const std::vector<Value> &) { return builtinDestroy({}); });
 
     script.setBuiltin("self", [this](const std::vector<Value> &a) { return builtinSelfHandle(a); });
     script.setBuiltin("transform", [this](const std::vector<Value> &a) { return builtinTransform(a); });
@@ -294,6 +298,42 @@ Value ScriptHost::builtinSpawn(const std::vector<Value> &args, const std::string
         e = sceneRef->spawnStaticFromAsset("models/cow.obj", "cow", model, color, 1.0f);
 
     return entityHandle("object", e);
+}
+
+Value ScriptHost::builtinDestroy(const std::vector<Value> &args)
+{
+    // Object lifetime is server-authoritative when networked: spawns are
+    // suppressed on the client (spawnEnabled=false, handles are inert "sink"s),
+    // so destroy is a no-op there too — the real despawn arrives from the server
+    // as DespawnEntity. Suppressing it also guards against a client script
+    // destroying its own predicted local player.
+    if (!spawnEnabled || !sceneRef)
+        return Value::makeNull();
+
+    ecs::Entity e;
+    if (args.empty())
+    {
+        e = selfEntity; // destroy_self()
+    }
+    else
+    {
+        // Only act on a real entity handle; ignore null / sink / non-entity
+        // values so a bad argument can't accidentally fall back to destroying
+        // self.
+        const Value &v = args[0];
+        if (v.type == Value::Handle &&
+            (v.str == "object" || v.str == "transform" || v.str == "rigidbody"))
+            e = ecs::fromUserPointer(v.handle);
+        else
+            return Value::makeNull();
+    }
+
+    if (e == ecs::NullEntity || !sceneRef->registry().valid(e))
+        return Value::makeNull();
+    // destroyEntity removes the Bullet body from the physics world before
+    // destroying the entity, so no dangling rigid body is left simulating.
+    sceneRef->destroyEntity(e);
+    return Value::makeNull();
 }
 
 Value ScriptHost::builtinSelfHandle(const std::vector<Value> &)

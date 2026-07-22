@@ -1160,17 +1160,22 @@ namespace cowscript
                         throw std::runtime_error("Modulo by zero");
                     return Value::makeNumber(std::fmod(l.toNumber(), rv));
                 }
-                if (op == "==")
+                if (op == "==" || op == "!=")
                 {
-                    if (l.type == Value::Str || r.type == Value::Str)
-                        return Value::makeBool(l.toString() == r.toString());
-                    return Value::makeBool(l.toNumber() == r.toNumber());
-                }
-                if (op == "!=")
-                {
-                    if (l.type == Value::Str || r.type == Value::Str)
-                        return Value::makeBool(l.toString() != r.toString());
-                    return Value::makeBool(l.toNumber() != r.toNumber());
+                    bool eq;
+                    if (l.type == Value::Null || r.type == Value::Null)
+                        // null is equal only to null. This lets scripts test
+                        // object handles with `h != null` (a handle is not null).
+                        eq = (l.type == Value::Null && r.type == Value::Null);
+                    else if (l.type == Value::Handle || r.type == Value::Handle)
+                        // Two handles are the same object iff same kind + pointer.
+                        eq = (l.type == Value::Handle && r.type == Value::Handle &&
+                              l.handle == r.handle && l.str == r.str);
+                    else if (l.type == Value::Str || r.type == Value::Str)
+                        eq = (l.toString() == r.toString());
+                    else
+                        eq = (l.toNumber() == r.toNumber());
+                    return Value::makeBool(op == "==" ? eq : !eq);
                 }
                 if (op == "<")
                     return Value::makeBool(l.toNumber() < r.toNumber());

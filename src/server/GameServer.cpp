@@ -15,6 +15,10 @@ GameServer::GameServer() = default;
 
 GameServer::~GameServer()
 {
+    // Disconnect before members tear down: destroying the scene fires
+    // on_destroy<NetId> for every remaining entity, and the observer must not
+    // touch a half-destroyed GameServer.
+    scene_.registry().on_destroy<ecs::NetId>().disconnect(this);
     for (auto &[id, s] : sessions_)
         delete s.camera;
 }
@@ -22,6 +26,10 @@ GameServer::~GameServer()
 bool GameServer::init(const std::string &scenePath)
 {
     host_.setContext(&scene_, nullptr); // no Window on the server
+
+    // Observe entity destruction so a scripted destroy (shoot_cow despawning a
+    // cow) is announced to clients. Connected before any entities exist.
+    scene_.registry().on_destroy<ecs::NetId>().connect<&GameServer::onNetIdDestroyed>(*this);
 
     if (!scene_.loadFromJSON(scenePath))
     {
@@ -247,6 +255,39 @@ void GameServer::detectAndAnnounceSpawns()
     }
 }
 
+void GameServer::onNetIdDestroyed(ecs::Registry &reg, ecs::Entity e)
+{
+    // Fires while the entity is being destroyed; the NetId is still readable.
+    // Player entities also carry a NetId, but their removal is announced via
+    // PlayerLeave, so only queue runtime-spawned objects here.
+    uint32_t netId = reg.get<ecs::NetId>(e).id;
+    if (netId >= net::kSpawnNetIdBase)
+        pendingDespawns_.push_back(netId);
+}
+
+void GameServer::flushDespawns()
+{
+    if (pendingDespawns_.empty())
+        return;
+    for (uint32_t netId : pendingDespawns_)
+    {
+        // Drop from the late-join replay list so a client joining later isn't
+        // told to spawn something that no longer exists.
+        spawnedObjects_.erase(
+            std::remove_if(spawnedObjects_.begin(), spawnedObjects_.end(),
+                           [netId](const net::SpawnEntity &s) { return s.netId == netId; }),
+            spawnedObjects_.end());
+
+        net::DespawnEntity d;
+        d.netId = netId;
+        if (send_)
+            for (auto &[id, s] : sessions_)
+                if (s.spawned)
+                    send_(id, d);
+    }
+    pendingDespawns_.clear();
+}
+
 void GameServer::sweepIdleSessions()
 {
     // A clean disconnect sends PlayerLeave via onDisconnect. But if the transport
@@ -305,8 +346,10 @@ void GameServer::tick(float dt)
     host_.setDelta(dt);
     scene_.updateScripts(host_, dt);
 
-    // Pick up anything the scripts spawned and tell the clients about it.
+    // Pick up anything the scripts spawned and tell the clients about it, then
+    // announce anything they destroyed (e.g. shoot_cow despawning old cows).
     detectAndAnnounceSpawns();
+    flushDespawns();
 
     ++serverTick_;
 

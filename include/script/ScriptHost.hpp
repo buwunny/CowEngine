@@ -66,6 +66,7 @@ private:
     cowscript::Value builtinSelfOnGround(const std::vector<cowscript::Value> &args);
 
     cowscript::Value builtinSpawn(const std::vector<cowscript::Value> &args, const std::string &kind);
+    cowscript::Value builtinDestroy(const std::vector<cowscript::Value> &args);
 
     cowscript::Value builtinTransform(const std::vector<cowscript::Value> &args);
     cowscript::Value builtinRigidbody(const std::vector<cowscript::Value> &args);

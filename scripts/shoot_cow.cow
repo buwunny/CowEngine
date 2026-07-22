@@ -1,21 +1,40 @@
 // shoot_cow.cow - attach to the Player. Press C while testing to launch a cow
-// in the direction the camera is facing.
+// in the direction the camera is facing. Cows don't pile up forever: each shot
+// despawns after a short lifetime, and firing again removes the previous cow.
 //
-// Demonstrates the component API: camera(), spawn_cow() returns an object
-// handle, and `.rigidbody.vx` reads/writes the rigidbody's linear velocity.
+// Demonstrates the component API: camera(), spawn_cow() returns an object handle,
+// `.rigidbody.vx` reads/writes the rigidbody's linear velocity, and destroy()
+// removes a spawned object (destroy_self() would remove the running script's own
+// entity).
 
 let was_down = false
 let speed = 100
+let lifetime = 4      // seconds a shot cow lives before it despawns
+let cow = null        // the currently-live cow, or null when none
+let born = 0          // time() at which `cow` was spawned
 
 on update(dt) {
+    // Auto-despawn the live cow once it has been around long enough.
+    if (cow != null and time() - born > lifetime) {
+        destroy(cow)
+        cow = null
+    }
+
     let down = key("c")
     if (down and not was_down) {
+        // Keep only one cow at a time: remove the previous shot before firing.
+        if (cow != null) {
+            destroy(cow)
+            cow = null
+        }
+
         let cam = camera()
         let ox = cam.x + cam.fx * 2
         let oy = cam.y + cam.fy * 2
         let oz = cam.z + cam.fz * 2
 
-        let cow = spawn_cow(ox, oy, oz)
+        cow = spawn_cow(ox, oy, oz)
+        born = time()
         cow.sx = 0.1
         cow.sy = 0.1
         cow.sz = 0.1
