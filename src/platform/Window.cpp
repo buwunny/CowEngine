@@ -34,6 +34,12 @@ EM_JS(int, js_is_canvas_pointer_locked, (), {
 static Window::MouseDeltaCallback s_mouseDeltaCallback = nullptr;
 static void *s_mouseDeltaUser = nullptr;
 
+// Touch (mobile) mode, set by the HTML shell's on-screen controls. Phones have
+// no pointer lock at all, so the cursor-disabled gate that mouse-look sits
+// behind would never open and the look pad would do nothing; this flag stands
+// in for "the player has an active means of looking around".
+static bool s_touchActive = false;
+
 #if ENGINE_WITH_EDITOR
 // Editor web build: keyboard input is served by ImGui's IO (populated by the
 // imgui_impl_emscripten backend). Window::isKeyPressed reads that state, so it
@@ -351,7 +357,9 @@ bool Window::isCursorDisabled() const
     // the cached flag there would leave mouse-look permanently gated off even
     // though the browser never actually re-acquired the lock. Query the real
     // pointer-lock state instead so this always matches what the browser did.
-    return js_is_canvas_pointer_locked() != 0;
+    // Touch devices have no pointer lock to acquire, so the on-screen controls
+    // hold this open for themselves instead.
+    return s_touchActive || js_is_canvas_pointer_locked() != 0;
 #else
     return cursorDisabled;
 #endif
@@ -404,3 +412,41 @@ void Window::setEmscriptenMouseDeltaCallback(MouseDeltaCallback cb, void *user)
     (void)user;
 #endif
 }
+
+#if defined(__EMSCRIPTEN__)
+// ---- Touch-control bridge --------------------------------------------------
+// Called from the HTML shell's on-screen joystick / look pad. Both entry points
+// deliberately reuse the existing desktop plumbing rather than adding a parallel
+// input path: the joystick writes the very same GLFW key state a physical
+// keyboard fills (so player_movement.cow's key("w") needs no changes, and the
+// netcode's input sampling replicates touch input for free), and the look pad
+// feeds the same mouse-delta callback pointer-lock mousemove uses.
+extern "C"
+{
+    // Press/release one key by GLFW key code. No-op on the editor web build,
+    // which sources keyboard state from ImGui's IO rather than its own array.
+    EMSCRIPTEN_KEEPALIVE void cow_touch_key(int key, int down)
+    {
+#if !ENGINE_WITH_EDITOR
+        if (key >= 0 && key <= GLFW_KEY_LAST)
+            s_keyState[key] = (down != 0);
+#else
+        (void)key;
+        (void)down;
+#endif
+    }
+
+    // One look-pad drag step, already scaled by the shell.
+    EMSCRIPTEN_KEEPALIVE void cow_touch_look(float dx, float dy)
+    {
+        if (s_mouseDeltaCallback)
+            s_mouseDeltaCallback(s_mouseDeltaUser, dx, dy);
+    }
+
+    // Enable touch mode — see s_touchActive.
+    EMSCRIPTEN_KEEPALIVE void cow_touch_active(int active)
+    {
+        s_touchActive = (active != 0);
+    }
+}
+#endif

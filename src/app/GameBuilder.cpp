@@ -31,16 +31,27 @@ R"html(<!doctype html>
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>CowEngine Game</title>
     <style>
-        html,body{height:100%;margin:0;background:#000;color:#eee;font-family:Arial,sans-serif;overflow:hidden;}
+        html,body{height:100%;margin:0;background:#000;color:#eee;font-family:Arial,sans-serif;overflow:hidden;overscroll-behavior:none;}
         body{display:flex;flex-direction:column;}
         #main{position:relative;flex:1 1 auto;display:flex;}
-        #canvas{display:block;width:100%;height:100%;background:#000;outline:none;}
+        #canvas{display:block;width:100%;height:100%;background:#000;outline:none;touch-action:none;}
         .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;}
         #loadingOverlay{background:#000;z-index:40;flex-direction:column;}
         #startOverlay{background:rgba(0,0,0,0.6);z-index:30;cursor:pointer;font-size:22px;color:#fff;}
         #startOverlay .hint{font-size:14px;color:#bbb;margin-top:12px;}
+        /* On-screen touch controls: above the canvas, below the start overlay. */
+        #touchControls{position:absolute;inset:0;z-index:20;display:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
+        #touchControls.on{display:block;}
+        #stick{position:absolute;width:124px;height:124px;margin:-62px 0 0 -62px;border-radius:50%;border:2px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.07);opacity:0.4;transition:opacity .15s ease;}
+        #stick.active{opacity:1;}
+        #stickKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.5);}
+        .touch-btn{position:absolute;width:78px;height:78px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.1);color:#fff;font:600 13px/1 Arial,sans-serif;letter-spacing:.06em;opacity:0.75;}
+        .touch-btn.held{background:rgba(255,255,255,0.3);opacity:1;}
+        #jumpBtn{right:26px;bottom:calc(34px + env(safe-area-inset-bottom,0px));}
+        #shootBtn{right:116px;bottom:calc(92px + env(safe-area-inset-bottom,0px));}
     </style>
 </head>
 <body>
@@ -57,6 +68,11 @@ R"html(<!doctype html>
                 <div>Click to play</div>
                 <div class="hint">WASD to move, mouse to look, Space to jump, Tab to release cursor</div>
             </div>
+        </div>
+        <div id="touchControls">
+            <div id="stick"><div id="stickKnob"></div></div>
+            <button id="jumpBtn" class="touch-btn" type="button">JUMP</button>
+            <button id="shootBtn" class="touch-btn" type="button">SHOOT</button>
         </div>
     </div>
     <script>
@@ -86,6 +102,88 @@ R"html(<!doctype html>
         document.addEventListener('DOMContentLoaded',resizeCanvas);
         window.addEventListener('resize',resizeCanvas);
         document.addEventListener('fullscreenchange',resizeCanvas);
+        // On-screen touch controls: left half is a virtual stick, right half
+        // drags the camera. Both go through the engine's existing input paths
+        // via the bridge in src/platform/Window.cpp — the stick presses the same
+        // GLFW keys a keyboard would (so the movement script is untouched) and
+        // the look pad reuses the pointer-lock mouse-delta route. Returns null
+        // on non-touch devices, leaving desktop exactly as it was.
+        function initTouchControls(){
+            var coarse=false;
+            try{coarse=window.matchMedia('(pointer: coarse)').matches;}catch(e){}
+            if(!coarse||!(navigator.maxTouchPoints>0||'ontouchstart' in window))return null;
+            // GLFW key codes (ASCII for printable keys; 340 = left shift).
+            var K={W:87,A:65,S:83,D:68,SPACE:32,SHIFT:340,C:67};
+            var RADIUS=56,DEAD=0.28,SPRINT=0.92;
+            // The engine turns a delta into degrees as delta*5 (PlayerInputSystem)
+            // *0.1 (Camera::sensitivity), so this is ~0.55 deg per CSS px dragged.
+            // dpr is deliberately not applied here (unlike the mouse path):
+            // finger travel is what matters, not pixel density.
+            var LOOK=1.1;
+            var layer=document.getElementById('touchControls');
+            var stick=document.getElementById('stick'),knob=document.getElementById('stickKnob');
+            var held={};
+            function setKey(code,down){down=!!down;if(held[code]===down)return;held[code]=down;if(Module._cow_touch_key)Module._cow_touch_key(code,down?1:0);}
+            var moveId=null,lookId=null,origin={x:0,y:0},last={x:0,y:0};
+            function placeStick(x,y){stick.style.left=x+'px';stick.style.top=y+'px';}
+            function releaseStick(){moveId=null;knob.style.transform='';stick.classList.remove('active');placeStick(100,window.innerHeight-116);setKey(K.W,0);setKey(K.A,0);setKey(K.S,0);setKey(K.D,0);setKey(K.SHIFT,0);}
+            function applyStick(dx,dy){
+                var len=Math.sqrt(dx*dx+dy*dy);
+                if(len>RADIUS){dx=dx/len*RADIUS;dy=dy/len*RADIUS;len=RADIUS;}
+                knob.style.transform='translate('+dx+'px,'+dy+'px)';
+                var nx=dx/RADIUS,ny=dy/RADIUS;
+                setKey(K.W,ny<-DEAD);setKey(K.S,ny>DEAD);setKey(K.A,nx<-DEAD);setKey(K.D,nx>DEAD);
+                setKey(K.SHIFT,len/RADIUS>SPRINT);
+            }
+            function look(dx,dy){if(!Module._cow_touch_look)return;var s=(Module.mouseSensitivity||1)*LOOK;Module._cow_touch_look(dx*s,dy*s);}
+            layer.addEventListener('touchstart',function(e){
+                for(var i=0;i<e.changedTouches.length;i++){
+                    var t=e.changedTouches[i];
+                    if(t.clientX<window.innerWidth/2){
+                        if(moveId!==null)continue;
+                        moveId=t.identifier;origin.x=t.clientX;origin.y=t.clientY;
+                        placeStick(t.clientX,t.clientY);stick.classList.add('active');knob.style.transform='';
+                    }else{
+                        if(lookId!==null)continue;
+                        lookId=t.identifier;last.x=t.clientX;last.y=t.clientY;
+                    }
+                }
+                e.preventDefault();
+            },{passive:false});
+            layer.addEventListener('touchmove',function(e){
+                for(var i=0;i<e.changedTouches.length;i++){
+                    var t=e.changedTouches[i];
+                    if(t.identifier===moveId)applyStick(t.clientX-origin.x,t.clientY-origin.y);
+                    else if(t.identifier===lookId){look(t.clientX-last.x,t.clientY-last.y);last.x=t.clientX;last.y=t.clientY;}
+                }
+                e.preventDefault();
+            },{passive:false});
+            function endTouch(e){
+                for(var i=0;i<e.changedTouches.length;i++){
+                    var t=e.changedTouches[i];
+                    if(t.identifier===moveId)releaseStick();
+                    else if(t.identifier===lookId)lookId=null;
+                }
+                e.preventDefault();
+            }
+            layer.addEventListener('touchend',endTouch,{passive:false});
+            layer.addEventListener('touchcancel',endTouch,{passive:false});
+            // Buttons stop propagation so a tap doesn't also grab the look finger.
+            function bindButton(el,code){
+                function down(e){e.preventDefault();e.stopPropagation();el.classList.add('held');setKey(code,1);}
+                function up(e){e.preventDefault();e.stopPropagation();el.classList.remove('held');setKey(code,0);}
+                el.addEventListener('touchstart',down,{passive:false});
+                el.addEventListener('touchend',up,{passive:false});
+                el.addEventListener('touchcancel',up,{passive:false});
+            }
+            bindButton(document.getElementById('jumpBtn'),K.SPACE);
+            bindButton(document.getElementById('shootBtn'),K.C);
+            releaseStick();
+            window.addEventListener('resize',function(){if(moveId===null)releaseStick();});
+            // No pointer lock exists on a phone, so open the gate mouse-look sits behind.
+            if(Module._cow_touch_active)Module._cow_touch_active(1);
+            return {show:function(){layer.classList.add('on');}};
+        }
         var Module={
             noInitialRun:false,
             canvas:(function(){return document.getElementById('canvas');})(),
@@ -98,8 +196,19 @@ R"html(<!doctype html>
                 s.style.display='flex';
                 var c=document.getElementById('canvas');
                 c.addEventListener('contextmenu',function(e){e.preventDefault();});
-                function go(){s.style.display='none';c.focus();if(c.requestPointerLock)c.requestPointerLock();}
+                // Browsers reject a lock request made during the short cooldown
+                // after a release, so swallow that promise rejection; the next
+                // click succeeds.
+                function lock(){if(!c.requestPointerLock)return;var p=c.requestPointerLock();if(p&&p.catch)p.catch(function(){});}
+                // Non-null only on a touch device; desktop keeps the mouse path.
+                var touch=initTouchControls();
+                if(touch)s.querySelector('.hint').textContent='Left side to move, right side to look, buttons to jump and shoot';
+                function go(){s.style.display='none';if(touch){touch.show();return;}c.focus();lock();}
                 s.addEventListener('click',go);
+                // Clicking the canvas while unlocked re-acquires pointer lock —
+                // Tab/Escape release it, and the click is the gesture the
+                // browser requires to grant it again.
+                if(!touch)c.addEventListener('click',function(){if(document.pointerLockElement!==c)lock();});
                 resizeCanvas();
             }
         };

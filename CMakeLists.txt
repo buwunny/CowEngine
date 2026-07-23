@@ -517,7 +517,9 @@ if(EMSCRIPTEN)
     list(APPEND WEB_LINK_FLAGS "-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"FS\",\"UTF8ToString\",\"stringToUTF8\",\"lengthBytesUTF8\",\"HEAPU8\"]")
     # Networking bridge: window.CowNet mallocs a buffer, copies an inbound
     # message into HEAPU8, and calls _cow_net_deliver, then frees it.
-    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_FUNCTIONS=[\"_main\",\"_malloc\",\"_free\",\"_cow_net_deliver\"]")
+    # Also exports the touch-control bridge the HTML shell's on-screen joystick
+    # and look pad call into (see src/platform/Window.cpp).
+    list(APPEND WEB_LINK_FLAGS "-sEXPORTED_FUNCTIONS=[\"_main\",\"_malloc\",\"_free\",\"_cow_net_deliver\",\"_cow_touch_key\",\"_cow_touch_look\",\"_cow_touch_active\"]")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scenes@/scenes")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/shaders@/shaders")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")
