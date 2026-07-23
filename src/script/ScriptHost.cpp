@@ -286,7 +286,35 @@ Value ScriptHost::builtinSpawn(const std::vector<Value> &args, const std::string
         return Value::makeHandle("sink", nullptr);
     if (!sceneRef) return Value::makeNull();
     glm::vec3 pos = vec3FromArgs(args, glm::vec3(0.0f, 5.0f, 0.0f));
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+
+    // Optional 4th argument: uniform scale, applied here rather than by the
+    // caller writing .sx/.sy/.sz afterwards. Doing it at spawn means the
+    // collision hull is built at the final size and its inertia tensor matches —
+    // a later rescale only calls setLocalScaling and leaves the tensor stale.
+    float scale = 1.0f;
+    if (args.size() > 3)
+    {
+        scale = static_cast<float>(args[3].toNumber());
+        if (!(scale > 0.0f))
+            scale = 1.0f;
+    }
+
+    // Aim at the object's visible centre, not its model origin. cow.obj's origin
+    // is 0.89 units off its own bounding-box centre, which put a cow fired down
+    // the view axis ~2.5 degrees beside the crosshair.
+    glm::vec3 center(0.0f);
+    std::shared_ptr<Mesh> mesh;
+    if (kind == "cow")
+    {
+        mesh = AssetManager::instance().loadStaticMeshFromOBJ("models/cow.obj", "cow");
+        if (mesh)
+            center = mesh->getLocalCenter();
+    }
+
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), pos - center * scale);
+    if (scale != 1.0f)
+        model = glm::scale(model, glm::vec3(scale));
+
     float r = static_cast<float>(rand()) / RAND_MAX;
     float g = static_cast<float>(rand()) / RAND_MAX;
     float b = static_cast<float>(rand()) / RAND_MAX;

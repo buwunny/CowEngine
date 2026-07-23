@@ -12,8 +12,11 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace ecs
 {
@@ -117,6 +120,81 @@ namespace ecs
 
     namespace
     {
+        // Reduce a mesh's vertices to the corner points of its convex hull:
+        // deduplicate on a 1e-5 quantization grid (raw OBJ data repeats a vertex
+        // per face), then let Bullet's solver discard everything interior.
+        std::vector<btVector3> computeHullPoints(const float *verts, size_t vertexCount,
+                                                 int floatsPerVertex)
+        {
+            btConvexHullShape hull;
+            std::set<std::array<int32_t, 3>> seen;
+            for (size_t i = 0; i < vertexCount; ++i)
+            {
+                const float *v = verts + i * floatsPerVertex;
+                std::array<int32_t, 3> key{
+                    static_cast<int32_t>(std::lround(v[0] * 100000.0f)),
+                    static_cast<int32_t>(std::lround(v[1] * 100000.0f)),
+                    static_cast<int32_t>(std::lround(v[2] * 100000.0f))};
+                if (!seen.insert(key).second)
+                    continue;
+                hull.addPoint(btVector3(v[0], v[1], v[2]), false);
+            }
+            hull.setMargin(0.005f);
+            hull.optimizeConvexHull();
+
+            std::vector<btVector3> points;
+            points.reserve(static_cast<size_t>(hull.getNumPoints()));
+            const btVector3 *p = hull.getUnscaledPoints();
+            for (int i = 0; i < hull.getNumPoints(); ++i)
+                points.push_back(p[i]);
+            return points;
+        }
+
+        // A convex hull is a property of the mesh, not of the instance, but the
+        // reduction above is expensive — cow.obj is 4583 vertices and took ~1.8 ms,
+        // so every shot fired dropped a frame. Derive the points once per mesh and
+        // rebuild only the cheap shape around them per instance; the shape has to
+        // stay per-instance because Bullet stores the entity's scale on it (see
+        // setLocalScaling in buildPhysics).
+        std::unique_ptr<btCollisionShape> makeHullShape(const std::shared_ptr<Mesh> &mesh,
+                                                        const float *verts, size_t vertexCount,
+                                                        int floatsPerVertex)
+        {
+            // Meshes come from AssetManager, which never evicts, and the pinning
+            // shared_ptr below keeps an address from being recycled under the key.
+            struct Entry
+            {
+                std::shared_ptr<Mesh> pin;
+                std::vector<btVector3> points;
+            };
+            static std::unordered_map<const Mesh *, Entry> cache;
+
+            const std::vector<btVector3> *points = nullptr;
+            std::vector<btVector3> local; // used when the mesh isn't shared/cacheable
+            if (mesh)
+            {
+                auto it = cache.find(mesh.get());
+                if (it == cache.end())
+                    it = cache.emplace(mesh.get(),
+                                       Entry{mesh, computeHullPoints(verts, vertexCount, floatsPerVertex)})
+                             .first;
+                points = &it->second.points;
+            }
+            else
+            {
+                local = computeHullPoints(verts, vertexCount, floatsPerVertex);
+                points = &local;
+            }
+
+            if (points->empty())
+                return std::make_unique<btBoxShape>(btVector3(1.0f, 1.0f, 1.0f));
+            auto hull = std::make_unique<btConvexHullShape>(
+                &(*points)[0].getX(), static_cast<int>(points->size()), sizeof(btVector3));
+            hull->setMargin(0.005f);
+            hull->recalcLocalAabb();
+            return hull;
+        }
+
         // Build a Physics component around a freshly-constructed shape using
         // the entity's transform. Caller still owns the shape's destruction
         // via the unique_ptr we move in.
@@ -238,34 +316,11 @@ namespace ecs
         sm.kind = ShapeKind::Static;
         r.emplace<ShapeMarker>(e, sm);
 
-        // Build a convex hull from deduplicated vertex positions. See the
-        // original StaticObject for the rationale behind the quantization
-        // and shape margin choices.
         std::unique_ptr<btCollisionShape> shape;
         if (vertexCount == 0 || floatsPerVertex < 3)
-        {
             shape = std::make_unique<btBoxShape>(btVector3(1.0f, 1.0f, 1.0f));
-        }
         else
-        {
-            auto *hull = new btConvexHullShape();
-            std::set<std::array<int32_t, 3>> seen;
-            for (size_t i = 0; i < vertexCount; ++i)
-            {
-                const float *v = verts + i * floatsPerVertex;
-                std::array<int32_t, 3> key{
-                    static_cast<int32_t>(std::lround(v[0] * 100000.0f)),
-                    static_cast<int32_t>(std::lround(v[1] * 100000.0f)),
-                    static_cast<int32_t>(std::lround(v[2] * 100000.0f))};
-                if (!seen.insert(key).second)
-                    continue;
-                hull->addPoint(btVector3(v[0], v[1], v[2]), false);
-            }
-            hull->setMargin(0.005f);
-            hull->optimizeConvexHull();
-            hull->recalcLocalAabb();
-            shape.reset(hull);
-        }
+            shape = makeHullShape(sharedMesh, verts, vertexCount, floatsPerVertex);
         buildPhysics(r, e, std::move(shape), mass);
 
         if (physics)

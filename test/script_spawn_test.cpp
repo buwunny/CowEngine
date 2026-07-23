@@ -1,6 +1,10 @@
-// Headless test for runtime script attachment (attach_script) and the per-object
-// lifetime it enables. No GL context, no sockets — just a Scene, a PhysicsWorld
-// and the script systems. Verifies:
+// Headless test for script-driven spawning: where objects land, and how long they
+// live. No GL context, no sockets — just a Scene, a PhysicsWorld and the script
+// systems. Verifies:
+//   * the real scripts/shoot_cow.cow puts a cow's *visible centre* on the camera's
+//     view axis (cow.obj's origin is 0.89 units off its own centre, which used to
+//     land the shot ~2.5 degrees beside the crosshair)
+//   * spawn_cow's optional scale argument sizes the collision shape to match
 //   * attach_script compiles and attaches a .cow to a spawned object
 //   * on start() fires for a script attached after startScripts() has run
 //   * several objects can be alive at once, each despawning on its own clock
@@ -10,12 +14,18 @@
 
 #include "core/Scene.hpp"
 #include "core/PhysicsWorld.hpp"
+#include "core/Camera.hpp"
 #include "ecs/Components.hpp"
+#include "ecs/Factories.hpp"
+#include "ecs/InputKeys.hpp"
 #include "ecs/systems/ScriptSystem.hpp"
+#include "meshes/AssetManager.hpp"
 #include "script/ScriptHost.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <btBulletDynamicsCommon.h>
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -47,8 +57,76 @@ namespace
     }
 }
 
+// Fires the real scripts/shoot_cow.cow from a known eye position and facing, and
+// checks where the cow actually ends up on screen.
+static void testShotIsCentred()
+{
+    PhysicsWorld physics;
+    Scene scene;
+    scene.populateDefault();
+    scene.addRigidBodiesToWorld(physics);
+
+    ScriptHost host;
+    host.setContext(&scene, nullptr);
+
+    const glm::vec3 eye(3.0f, 12.0f, -7.0f);
+    Camera camera(eye, glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
+    camera.setLook(37.0f, -11.0f); // an arbitrary off-axis pose, not a lucky one
+    camera.setPosition(eye);
+
+    // shoot_cow.cow alone: player_movement.cow would move the camera off `eye`.
+    ecs::Entity player = ecs::createPlayer(scene.registry(), &physics, &camera,
+                                           glm::translate(glm::mat4(1.0f), eye));
+    scene.registry().get<ecs::Identity>(player).scriptPaths = {"scripts/shoot_cow.cow"};
+    auto &input = scene.registry().emplace<ecs::PlayerInput>(player);
+
+    host.setTime(0.0);
+    host.setDelta(0.0);
+    scene.loadScripts(host);
+    scene.startScripts(host);
+
+    input.keys = 1ull << ecs::inputKeyBit("c"); // hold C: one shot on the edge
+    host.setTime(0.1);
+    host.setDelta(1.0f / 60.0f);
+    scene.updateScripts(host, 1.0f / 60.0f);
+
+    ecs::Entity cow = ecs::NullEntity;
+    for (auto e : scene.registry().view<ecs::Identity>())
+        if (scene.registry().get<ecs::Identity>(e).meshPath.find("cow") != std::string::npos)
+            cow = e;
+    CHECK(cow != ecs::NullEntity);
+    if (cow == ecs::NullEntity)
+        return;
+
+    const auto &t = scene.registry().get<ecs::Transform>(cow);
+    const auto &rd = scene.registry().get<ecs::Renderable>(cow);
+    CHECK(std::fabs(t.scale.x - 0.1) < 1e-5); // the scale argument took effect
+
+    // Where the player sees the cow: its model origin plus the mesh's own
+    // off-centre bounding box, scaled the same way the renderer scales it.
+    glm::vec3 visible = glm::vec3(t.position) + glm::vec3(t.scale) * rd.mesh->getLocalCenter();
+    glm::vec3 toCow = visible - eye;
+    glm::vec3 front = camera.getFront();
+
+    float distance = glm::length(toCow);
+    float offAxis = glm::degrees(std::acos(glm::clamp(glm::dot(glm::normalize(toCow), front), -1.0f, 1.0f)));
+    printf("  shot lands %.3f m ahead, %.4f deg off the view axis\n", distance, offAxis);
+    CHECK(offAxis < 0.01f);                      // dead centre (was ~2.55 deg)
+    CHECK(std::fabs(distance - 2.0f) < 0.01f);   // at the script's `muzzle` distance
+
+    // The collision hull is sized for the cow the player can see, not the
+    // full-size model — the scale reaches Bullet at spawn, not a frame later.
+    const auto &phys = scene.registry().get<ecs::Physics>(cow);
+    btVector3 lo, hi;
+    phys.shape->getAabb(btTransform::getIdentity(), lo, hi);
+    printf("  collider extent = %.3f m (cow.obj is 10.44 m at scale 1)\n", hi.x() - lo.x());
+    CHECK(hi.x() - lo.x() < 1.2f);
+}
+
 int main()
 {
+    testShotIsCentred();
+
     PhysicsWorld physics;
     Scene scene;
     scene.populateDefault();

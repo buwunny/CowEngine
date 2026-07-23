@@ -10,19 +10,23 @@
 
 let was_down = false
 let speed = 100
+let size = 0.1        // uniform scale of a fired cow
+let muzzle = 2        // metres ahead of the eye the cow appears
 
 on update(dt) {
     let down = key("c")
     if (down and not was_down) {
+        // cam.x/y/z is the eye (player_movement.cow parks it there earlier this
+        // same frame) and cam.fx/fy/fz is exactly the view axis, so this point is
+        // dead centre on screen. Passing the scale to spawn_cow rather than
+        // writing .sx/.sy/.sz afterwards is what keeps it centred: the spawn can
+        // only correct for the model's off-centre origin if it knows the size.
         let cam = camera()
-        let ox = cam.x + cam.fx * 2
-        let oy = cam.y + cam.fy * 2
-        let oz = cam.z + cam.fz * 2
+        let ox = cam.x + cam.fx * muzzle
+        let oy = cam.y + cam.fy * muzzle
+        let oz = cam.z + cam.fz * muzzle
 
-        let cow = spawn_cow(ox, oy, oz)
-        cow.sx = 0.1
-        cow.sy = 0.1
-        cow.sz = 0.1
+        let cow = spawn_cow(ox, oy, oz, size)
         let rb = cow.rigidbody
         rb.vx = cam.fx * speed
         rb.vy = cam.fy * speed

@@ -73,6 +73,32 @@ public:
     size_t getIndexCount() const { return indices.size(); }
     int getFloatsPerVertex() const { return floats_per_vertex; }
 
+    // Centre of the mesh's local bounding box. A model's origin is wherever the
+    // artist left it — cow.obj's sits 0.89 units off its own centre — so anything
+    // placing a mesh *visually* (a script spawning down the camera's view axis)
+    // has to offset by this or the object lands beside the point it was aimed at.
+    // Cached on first use; vertex data is immutable once uploaded.
+    const glm::vec3 &getLocalCenter() const
+    {
+        if (!centerCached)
+        {
+            const int stride = std::max(1, floats_per_vertex);
+            if (vertices.size() >= static_cast<size_t>(stride) && stride >= 3)
+            {
+                glm::vec3 lo(vertices[0], vertices[1], vertices[2]), hi = lo;
+                for (size_t i = stride; i + 3 <= vertices.size(); i += stride)
+                {
+                    glm::vec3 p(vertices[i], vertices[i + 1], vertices[i + 2]);
+                    lo = glm::min(lo, p);
+                    hi = glm::max(hi, p);
+                }
+                localCenter = (lo + hi) * 0.5f;
+            }
+            centerCached = true;
+        }
+        return localCenter;
+    }
+
 protected:
     unsigned int VBO, VAO, EBO;
     // Optional element buffer for wireframe (edge) rendering
@@ -82,6 +108,10 @@ protected:
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
     int floats_per_vertex = 3;
+
+private:
+    mutable glm::vec3 localCenter{0.0f};
+    mutable bool centerCached = false;
 };
 // Default implementation: build a line-element buffer from triangle indices and draw GL_LINES.
 inline void Mesh::renderWireframe()

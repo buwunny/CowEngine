@@ -224,15 +224,26 @@ Engine objects are accessed through **handles** — opaque references returned b
 
 ### Spawning Objects
 
-Spawn functions return an **object handle** and accept an optional `(x, y, z)` position (defaults to `(0, 5, 0)`).
+Spawn functions return an **object handle** and accept an optional `(x, y, z)`
+position (defaults to `(0, 5, 0)`) plus an optional uniform `scale`.
 
 | Function | Description |
 |----------|-------------|
-| `spawn_cube(x, y, z)` | Spawns a cube, returns object handle |
-| `spawn_cow(x, y, z)` | Spawns a cow mesh, returns object handle |
-| `spawn_plane(x, y, z)` | Spawns a plane, returns object handle |
+| `spawn_cube(x, y, z, scale)` | Spawns a cube, returns object handle |
+| `spawn_cow(x, y, z, scale)` | Spawns a cow mesh, returns object handle |
+| `spawn_plane(x, y, z, scale)` | Spawns a plane, returns object handle |
 
 Spawned objects get a random color and are added to the live scene.
+
+`(x, y, z)` is where the object's **visible centre** lands, not its model origin —
+a model's origin is wherever the artist left it (`cow.obj`'s is 0.89 units off its
+own centre), so aiming at the origin would put a shot fired down the camera's view
+axis a couple of degrees beside the crosshair.
+
+Pass `scale` here rather than writing `.sx`/`.sy`/`.sz` afterwards. The spawn can
+only place the centre correctly if it knows the final size, and the collision hull
+is then built — and its inertia computed — at that size. Setting the scale after
+the fact resizes the collider about the model origin, which moves the object.
 
 ### Object Lifetime
 
@@ -356,10 +367,7 @@ on update(dt) {
         let ox = cam.x + cam.fx * 2
         let oy = cam.y + cam.fy * 2
         let oz = cam.z + cam.fz * 2
-        let cow = spawn_cow(ox, oy, oz)
-        cow.sx = 0.1
-        cow.sy = 0.1
-        cow.sz = 0.1
+        let cow = spawn_cow(ox, oy, oz, 0.1)
         let rb = cow.rigidbody
         rb.vx = cam.fx * speed
         rb.vy = cam.fy * speed
