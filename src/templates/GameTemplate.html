@@ -95,8 +95,14 @@
 
         #gateOverlay form {
             display: flex;
+            flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 12px;
+        }
+
+        /* The name spans the row above the key + Join button. */
+        #gateOverlay #joinNameInput {
+            flex-basis: 100%;
         }
 
         #gateOverlay input {
@@ -243,6 +249,7 @@
                 <h1>CowEngine</h1>
                 <p class="sub">Join the shared world with a key, or play solo.</p>
                 <form id="joinForm">
+                    <input id="joinNameInput" type="text" placeholder="Your name" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false">
                     <input id="joinKeyInput" type="text" placeholder="Room key" autocomplete="off" autocapitalize="off" spellcheck="false">
                     <button type="submit" class="join-btn">Join</button>
                 </form>
@@ -262,13 +269,17 @@
         //   { wt: "https://host:4443", ws: "wss://host:8080", certHash: "<base64 sha-256>" }
         var __COWENGINE_SERVER__ = null;
 
-        // ---- Join gate: ask for a room key (shared world) or singleplayer ---
+        // Where the join gate remembers the player's display name between
+        // sessions, so a returning player only types it once.
+        var COW_NAME_KEY = 'cowengine_player_name';
+
+        // ---- Join gate: ask for a name + room key (shared world) or singleplayer ---
         // Only relevant when this export has a multiplayer server baked in; a
         // plain singleplayer export has nothing to gate and skips straight to
         // loading. The choice is round-tripped through a page reload (?key=/
-        // ?singleplayer=1) rather than blocking WASM startup, so it works with
-        // no changes to the C++ side: main() reads window.CowNet.config, which
-        // is resolved below from whichever query param made it here.
+        // ?name=/?singleplayer=1) rather than blocking WASM startup, so it works
+        // with no changes to the C++ side: main() reads window.CowNet.config,
+        // which is resolved below from whichever query params made it here.
         (function () {
             var hasServer = !!(__COWENGINE_SERVER__ && (__COWENGINE_SERVER__.wt || __COWENGINE_SERVER__.ws));
             if (!hasServer)
@@ -282,10 +293,25 @@
             var gate = document.getElementById('gateOverlay');
             gate.style.display = 'flex';
 
-            function proceed(param, value) {
+            var nameInput = document.getElementById('joinNameInput');
+            try { nameInput.value = localStorage.getItem(COW_NAME_KEY) || ''; } catch (e) { }
+            nameInput.focus();
+
+            function proceed(params) {
                 var url = new URL(location.href);
-                url.searchParams.set(param, value);
+                Object.keys(params).forEach(function (k) { url.searchParams.set(k, params[k]); });
                 location.href = url.toString();
+            }
+
+            // Remember the name for next time and carry it into the session. An
+            // empty name is fine — the server assigns one.
+            function rememberName() {
+                var name = nameInput.value.trim().slice(0, 16);
+                try {
+                    if (name) localStorage.setItem(COW_NAME_KEY, name);
+                    else localStorage.removeItem(COW_NAME_KEY);
+                } catch (e) { }
+                return name;
             }
 
             document.getElementById('joinForm').addEventListener('submit', function (e) {
@@ -295,11 +321,12 @@
                     document.getElementById('joinError').textContent = 'Enter a key to join the shared world.';
                     return;
                 }
-                proceed('key', key);
+                proceed({ key: key, name: rememberName() });
             });
 
             document.getElementById('singleplayerBtn').addEventListener('click', function () {
-                proceed('singleplayer', '1');
+                rememberName();
+                proceed({ singleplayer: '1' });
             });
         })();
 
@@ -321,23 +348,35 @@
             // The join gate above sends players here with either
             // ?singleplayer=1 (never connect, regardless of what's baked in) or
             // ?key=<value> (join the shared room — appended to wt/ws so the
-            // sidecar's COW_JOIN_KEY gate, see deploy/.env.example, admits us).
+            // sidecar's COW_JOIN_KEY gate, see deploy/.env.example, admits us),
+            // plus ?name=<display name>.
+            //
+            // `name` stays out of the transport URL: unlike the key it is not an
+            // admission token, it travels in the ClientHello the WASM client
+            // sends (WebClientTransport::playerName reads it from here). A link
+            // shared without ?name falls back to the last name this browser
+            // used, so a pasted invite doesn't strand the player as "Cow 3".
             var config = (function () {
                 var q = null;
                 try { q = new URLSearchParams(location.search); } catch (e) { }
                 if (q && q.get('singleplayer'))
                     return {};
                 var c = Object.assign({}, __COWENGINE_SERVER__ || {});
+                var remembered = '';
+                try { remembered = localStorage.getItem(COW_NAME_KEY) || ''; } catch (e) { }
+                c.name = remembered;
                 if (q) {
                     if (q.get('wt')) c.wt = q.get('wt');
                     if (q.get('ws')) c.ws = q.get('ws');
                     if (q.get('certhash')) c.certHash = q.get('certhash');
+                    if (q.get('name')) c.name = q.get('name');
                     var key = q.get('key');
                     if (key) {
                         if (c.wt) c.wt += (c.wt.indexOf('?') === -1 ? '?' : '&') + 'key=' + encodeURIComponent(key);
                         if (c.ws) c.ws += (c.ws.indexOf('?') === -1 ? '?' : '&') + 'key=' + encodeURIComponent(key);
                     }
                 }
+                c.name = String(c.name || '').trim().slice(0, 16);
                 return c;
             })();
 

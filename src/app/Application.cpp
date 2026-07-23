@@ -3,6 +3,7 @@
 #include "ecs/systems/PlayerInputSystem.hpp"
 #include "ecs/systems/LocalInputSystem.hpp"
 #include "ecs/systems/RenderSystem.hpp"
+#include "ecs/systems/NametagSystem.hpp"
 #ifdef __EMSCRIPTEN__
 #include "net/WebClientTransport.hpp"
 #include "net/NetClient.hpp"
@@ -69,6 +70,7 @@ Application::~Application()
 #endif
     delete scriptHost;
     delete postfx;
+    delete text;
 #ifdef __EMSCRIPTEN__
     delete netClient_;
     delete netTransport_;
@@ -135,6 +137,9 @@ void Application::init()
     shader = new Shader("./shaders/vertex.glsl", "./shaders/fragment.glsl");
     postfx = new PostFX();
 
+    text = new TextRenderer();
+    text->init("engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf/JetBrainsMono-Regular.ttf");
+
 #if !ENGINE_WITH_EDITOR
     // Standalone runtime: no editor UI, and no ImGui at all. Keyboard input is
     // served by Window's own backend (GLFW on desktop, a native emscripten
@@ -161,7 +166,8 @@ void Application::init()
         scriptHost->setSpawnEnabled(false);
         netTransport_ = new net::WebClientTransport();
         netTransport_->connect();
-        netClient_ = new net::NetClient(netTransport_, scene, scene->getPlayerEntity());
+        netClient_ = new net::NetClient(netTransport_, scene, scene->getPlayerEntity(),
+                                        net::WebClientTransport::playerName());
     }
 #endif
 #else
@@ -248,6 +254,8 @@ void Application::tick()
 
         scene->syncFromPhysics();
         scene->render(*window, *shader);
+        if (text)
+            ecs::nametagSystem(scene->registry(), *text, view, projection, camera->getPosition());
 
         postfx->compositeTo(0, 0, 0, width, height, gameVfx, static_cast<float>(scriptTime));
 
@@ -475,6 +483,8 @@ void Application::tick()
 
     scene->syncFromPhysics();
     scene->render(*window, *shader);
+    if (text)
+        ecs::nametagSystem(scene->registry(), *text, view, projection, camera->getPosition());
 
     // Editor-only: draw the selected object's collider as a wireframe overlay
     // so the user can see what the physics shape actually looks like.

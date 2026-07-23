@@ -2,6 +2,8 @@
 // mock transport so it needs no server, sockets, or GL context. Verifies:
 //   * ClientHello sent on connect; ServerWelcome learned; InputCommand streamed
 //   * remote players become interpolated avatar entities (join)
+//   * a remote player's name reaches its avatar's nametag, even when a snapshot
+//     created that avatar before the PlayerJoin carrying the name arrived
 //   * PlayerLeave removes the avatar
 //   * the local player is snapped when it drifts far from the server state
 
@@ -189,7 +191,7 @@ int main()
     ecs::Entity local = scene.getPlayerEntity();
 
     MockTransport mock;
-    NetClient nc(&mock, &scene, local);
+    NetClient nc(&mock, &scene, local, "Moo Deng");
     nc.setInterpDelay(0.05);
     nc.setSnapThreshold(1.5f);
 
@@ -201,10 +203,13 @@ int main()
     const uint32_t OTHER = kPlayerNetIdBase + 1; // another player
     const uint32_t SPAWN = kSpawnNetIdBase;     // a server-spawned cow/cube
 
-    // 1) Hello on connect.
+    // 1) Hello on connect, carrying the name we asked to be called.
     nc.update(DT);
     CHECK(mock.countSent<ClientHello>() == 1);
     CHECK(!nc.joined());
+    for (auto &m : mock.sent)
+        if (auto *h = std::get_if<ClientHello>(&m))
+            CHECK(h->name == "Moo Deng");
 
     // 2) Welcome -> joined + our netId; subsequent ticks stream input.
     mock.inject(ServerWelcome{MY, 0, 60});
@@ -257,6 +262,26 @@ int main()
                sc0.x, sc0.y, sc0.z, sc1.x, sc1.y, sc1.z);
         CHECK(std::fabs(sc0.x - 5.0f) < 0.05f);   // rendered at net scale, not 1
         CHECK(glm::distance(sc0, sc1) < 0.01f);   // survives a render frame
+    }
+
+    // 3b) Nametags. The avatar above was built from a snapshot, so it starts
+    // unnamed — nothing is drawn for an empty tag. PlayerJoin is the only
+    // message carrying the name, and it must land on the avatar that already
+    // exists rather than being dropped or creating a second one.
+    {
+        ecs::Entity avatar = findByName(scene, "RemotePlayer");
+        CHECK(avatar != ecs::NullEntity);
+        auto *tag = scene.registry().try_get<ecs::Nametag>(avatar);
+        CHECK(tag && tag->text.empty());
+        CHECK(tag && tag->offset > 0.0f); // floats above the cow, not inside it
+
+        mock.inject(PlayerJoin{OTHER, "Bessie"});
+        nc.update(DT);
+        CHECK(nc.replicatedCount() == 2); // no duplicate avatar
+        tag = scene.registry().try_get<ecs::Nametag>(avatar);
+        CHECK(tag && tag->text == "Bessie");
+        printf("  remote avatar nametag = '%s' at +%.2f above the avatar\n",
+               tag ? tag->text.c_str() : "", tag ? tag->offset : 0.0f);
     }
 
     // 4) A server-spawned object (SpawnEntity) becomes a proxy and follows snaps.

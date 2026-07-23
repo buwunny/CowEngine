@@ -1,5 +1,7 @@
 #include "net/WebClientTransport.hpp"
 
+#include <cstdlib>
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 
@@ -16,6 +18,17 @@ EM_JS(void, cow_js_connect, (), {
 
 EM_JS(int, cow_js_has_server, (), {
     return (window.CowNet && window.CowNet.hasServer()) ? 1 : 0;
+});
+
+// Returns a malloc'd UTF-8 copy of the configured display name (the caller
+// frees it). Strings can't cross the EM_JS boundary any other way.
+EM_JS(char *, cow_js_player_name, (), {
+    var n = (window.CowNet && window.CowNet.config && window.CowNet.config.name)
+        ? String(window.CowNet.config.name) : "";
+    var len = lengthBytesUTF8(n) + 1;
+    var p = _malloc(len);
+    stringToUTF8(n, p, len);
+    return p;
 });
 
 EM_JS(int, cow_js_state, (), {
@@ -50,6 +63,20 @@ namespace net
         return cow_js_has_server() != 0;
 #else
         return false;
+#endif
+    }
+
+    std::string WebClientTransport::playerName()
+    {
+#ifdef __EMSCRIPTEN__
+        char *p = cow_js_player_name();
+        if (!p)
+            return {};
+        std::string name(p);
+        std::free(p);
+        return name;
+#else
+        return {};
 #endif
     }
 

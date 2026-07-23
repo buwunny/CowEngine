@@ -17,6 +17,9 @@ a headless multiplayer server.
   (native or web) with the assets bundled in.
 - **Runs everywhere** — native (GLFW/OpenGL) and WebAssembly (Emscripten) from the
   same sources.
+- **Text rendering** — `TextRenderer` bakes a TrueType face into a glyph atlas and
+  draws camera-facing world labels or HUD text, one draw call each. Players get a
+  nametag over their head from it.
 - **Multiplayer** — an authoritative headless C++ server (reusing the exact engine
   sim) with client-side prediction/reconciliation, entity interpolation, and shared
   physics, reached from the static web client over **WebTransport** (with a

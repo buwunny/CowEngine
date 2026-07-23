@@ -132,6 +132,18 @@ namespace ecs
         uint32_t sequence = 0;  // monotonic per-tick input sequence number
     };
 
+    // A camera-facing text label floating above an entity — player nametags in
+    // multiplayer, and available to anything else that wants one. Drawn by
+    // ecs::nametagSystem; an empty `text` draws nothing. Purely visual: no
+    // physics, no serialization, and never present on the headless server.
+    struct Nametag
+    {
+        std::string text;
+        float offset = 1.6f;      // world units above the entity's origin
+        float size = 0.32f;       // em height in world units at close range
+        glm::vec4 color{1.0f};
+    };
+
     // Network replication id. On the server, every replicated entity carries one
     // (scene dynamic objects use their Identity.id; players and spawned objects
     // use high id ranges — see net::kPlayerNetIdBase / kSpawnNetIdBase). Snapshots

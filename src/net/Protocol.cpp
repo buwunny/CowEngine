@@ -36,6 +36,7 @@ namespace net
         void writeBody(ByteWriter &w, const ClientHello &m)
         {
             w.u16(m.protocolVersion);
+            w.str(m.name);
         }
         void writeBody(ByteWriter &w, const ServerWelcome &m)
         {
@@ -65,7 +66,11 @@ namespace net
                 // interpolated by position, and it's dead weight per entity.
             }
         }
-        void writeBody(ByteWriter &w, const PlayerJoin &m) { w.u32(m.netId); }
+        void writeBody(ByteWriter &w, const PlayerJoin &m)
+        {
+            w.u32(m.netId);
+            w.str(m.name);
+        }
         void writeBody(ByteWriter &w, const PlayerLeave &m) { w.u32(m.netId); }
         void writeBody(ByteWriter &w, const SpawnEntity &m)
         {
@@ -101,6 +106,7 @@ namespace net
         {
             ClientHello m;
             m.protocolVersion = r.u16();
+            m.name = r.str();
             out = m;
             break;
         }
@@ -151,6 +157,7 @@ namespace net
         {
             PlayerJoin m;
             m.netId = r.u32();
+            m.name = r.str();
             out = m;
             break;
         }

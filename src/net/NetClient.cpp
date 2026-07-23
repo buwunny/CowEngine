@@ -45,8 +45,10 @@ namespace net
         }
     }
 
-    NetClient::NetClient(ITransport *transport, Scene *scene, ecs::Entity localPlayer)
-        : transport_(transport), scene_(scene), localPlayer_(localPlayer)
+    NetClient::NetClient(ITransport *transport, Scene *scene, ecs::Entity localPlayer,
+                         std::string playerName)
+        : transport_(transport), scene_(scene), localPlayer_(localPlayer),
+          playerName_(std::move(playerName))
     {
         claimSceneObjects();
     }
@@ -123,7 +125,9 @@ namespace net
     {
         if (sentHello_ || !transport_->connected())
             return;
-        transport_->send(Message{ClientHello{}});
+        ClientHello hello;
+        hello.name = playerName_;
+        transport_->send(Message{hello});
         sentHello_ = true;
     }
 
@@ -145,9 +149,14 @@ namespace net
             {
                 // Register the avatar on the join event; it stays hidden until its
                 // first snapshot positions it. (Snapshots would create it too, but
-                // this keeps the roster explicit for join/leave.)
+                // this keeps the roster explicit for join/leave.) This is also the
+                // only message carrying the player's name, so it may be updating an
+                // avatar a snapshot already created.
                 if (join->netId != myNetId_)
+                {
                     ensurePlayerAvatar(join->netId);
+                    setAvatarName(join->netId, join->name);
+                }
             }
             else if (const auto *leave = std::get_if<PlayerLeave>(&*msg))
             {
@@ -255,6 +264,17 @@ namespace net
                         0.4f + 0.5f * std::fabs(std::sin((hue + 0.66f) * 6.28f)),
                         1.0f);
         ecs::Entity e = scene_->createRemoteAvatar(color);
+
+        // Float the nametag just clear of the avatar's own silhouette. The cow's
+        // origin is nowhere near its centre, so the mesh's local bounding box is
+        // the only thing that actually says how tall it stands.
+        ecs::Nametag tag;
+        tag.color = color;
+        if (auto *rd = scene_->registry().try_get<ecs::Renderable>(e); rd && rd->mesh)
+            tag.offset = rd->mesh->getLocalMax().y * kAvatarScale.y + 0.35f;
+        tag.text.clear(); // filled in by PlayerJoin; draws nothing until then
+        scene_->registry().emplace<ecs::Nametag>(e, std::move(tag));
+
         Rep rep;
         rep.entity = e;
         rep.scale = kAvatarScale;
@@ -263,6 +283,15 @@ namespace net
         rep.wantsCollider = true;  // give it a kinematic collider once placed
         reps_[netId] = rep;
         return &reps_[netId];
+    }
+
+    void NetClient::setAvatarName(uint32_t netId, const std::string &name)
+    {
+        auto it = reps_.find(netId);
+        if (it == reps_.end() || !scene_->registry().valid(it->second.entity))
+            return;
+        if (auto *tag = scene_->registry().try_get<ecs::Nametag>(it->second.entity))
+            tag->text = name;
     }
 
     void NetClient::onSpawn(const SpawnEntity &s)

@@ -131,7 +131,9 @@ python3 -m http.server --directory dist/editor-web 8080
 
 ```bash
 cmake --build --preset server-native
-./build/server-native/cowengine_netclient_test   # headless client-netcode test
+./build/server-native/cowengine_netclient_test     # headless client-netcode test
+./build/server-native/cowengine_script_spawn_test  # script spawning + lifetimes
+./build/server-native/cowengine_server_names_test  # player names: sanitising + roster
 ```
 
 ## Notes

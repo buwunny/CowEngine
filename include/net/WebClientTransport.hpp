@@ -24,6 +24,11 @@ namespace net
         // wt/ws URL from __COWENGINE_SERVER__ or the ?wt/?ws query params).
         static bool serverConfigured();
 
+        // The display name the player entered in the join gate (window.CowNet
+        // resolved it from ?name= or the remembered value). Empty when they
+        // didn't give one — the server then assigns one.
+        static std::string playerName();
+
         // Begin connecting, using the config window.CowNet already resolved.
         void connect();
 

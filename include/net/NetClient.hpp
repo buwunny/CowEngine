@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <string>
 #include <unordered_map>
 
 class Scene;
@@ -33,7 +34,11 @@ namespace net
     class NetClient
     {
     public:
-        NetClient(ITransport *transport, Scene *scene, ecs::Entity localPlayer);
+        // `playerName` is what this client asks to be called; the server
+        // sanitises it and hands it back out to the other players. Empty means
+        // "server, pick one for me".
+        NetClient(ITransport *transport, Scene *scene, ecs::Entity localPlayer,
+                  std::string playerName = {});
         ~NetClient();
 
         // Call once per fixed sim tick, after the local prediction step.
@@ -73,12 +78,16 @@ namespace net
         void updateReplicated();
         void applyLocalReconcile(const EntityState &s);
         Rep *ensurePlayerAvatar(uint32_t netId);
+        // Put `name` on the avatar's floating label. Called from PlayerJoin,
+        // which may arrive after a snapshot has already created the avatar.
+        void setAvatarName(uint32_t netId, const std::string &name);
         void onSpawn(const SpawnEntity &s);
         void removeRep(uint32_t netId);
 
         ITransport *transport_;
         Scene *scene_;
         ecs::Entity localPlayer_;
+        std::string playerName_;
 
         bool sentHello_ = false;
         bool joined_ = false;

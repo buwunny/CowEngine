@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -19,11 +20,17 @@
 // — never reorder or repurpose, since old clients and servers must interoperate.
 namespace net
 {
-    // Bumped to 2 for the shared-physics/despawn generation. The server refuses a
-    // ClientHello whose version doesn't match, so a stale binary (an old server
-    // left holding the port, or a browser-cached old client) is rejected loudly
-    // instead of silently interoperating and producing duplicate/ghost objects.
-    inline constexpr uint16_t kProtocolVersion = 3;
+    // Bumped to 2 for the shared-physics/despawn generation, 4 for player names.
+    // The server refuses a ClientHello whose version doesn't match, so a stale
+    // binary (an old server left holding the port, or a browser-cached old
+    // client) is rejected loudly instead of silently interoperating and
+    // producing duplicate/ghost objects.
+    inline constexpr uint16_t kProtocolVersion = 4;
+
+    // Longest player name the server will keep; anything longer is truncated.
+    // Nametags are drawn in the world above a player's head, so this is a
+    // legibility limit as much as a wire-size one.
+    inline constexpr size_t kMaxPlayerNameLen = 16;
 
     // netId ranges partition the replicated-entity id space so a client can tell,
     // from the id alone, what kind of thing a snapshot entry is:
@@ -77,6 +84,10 @@ namespace net
     struct ClientHello
     {
         uint16_t protocolVersion = kProtocolVersion;
+        // Display name the player typed in the join gate. Untrusted: the server
+        // sanitises it (see GameServer) before it reaches any other client, and
+        // an empty name means "assign me one".
+        std::string name;
     };
 
     // Server -> client, accepting the connection.
@@ -115,9 +126,15 @@ namespace net
     };
 
     // Server -> client lifecycle events (reliable).
+    //
+    // PlayerJoin is both the "someone arrived" event and how a client learns a
+    // player's name, so the server also replays one per player already in the
+    // room to each newcomer. Otherwise a late joiner would only ever meet the
+    // others through snapshots, which carry no name.
     struct PlayerJoin
     {
         uint32_t netId = 0;
+        std::string name; // already sanitised by the server
     };
     struct PlayerLeave
     {

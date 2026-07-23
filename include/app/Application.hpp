@@ -10,6 +10,7 @@
 #include "render/Shader.hpp"
 #include "script/ScriptHost.hpp"
 #include "render/PostFX.hpp"
+#include "render/TextRenderer.hpp"
 #include "render/VfxSettings.hpp"
 
 #if ENGINE_WITH_EDITOR
@@ -74,6 +75,10 @@ private:
 #endif
     ScriptHost *scriptHost = nullptr;
     PostFX *postfx = nullptr;
+    // Engine text. Drawn inside the scene pass so labels are lit by the same
+    // post-processing as everything else; disabled (and a no-op) if the font is
+    // missing. Currently feeds multiplayer nametags.
+    TextRenderer *text = nullptr;
 #ifdef __EMSCRIPTEN__
     // Multiplayer client (web only). Null in single-player or when no server is
     // configured. NetClient sends input, reconciles the local player, and drives

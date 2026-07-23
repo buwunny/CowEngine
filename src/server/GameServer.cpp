@@ -13,6 +13,42 @@
 #include <cstddef>
 #include <iostream>
 
+namespace
+{
+    // Names arrive from a browser text box, are relayed verbatim to every other
+    // player, and are drawn with an ASCII-only glyph atlas. So: keep printable
+    // ASCII only (which drops control characters and anything the atlas has no
+    // glyph for), collapse runs of whitespace, trim, and clamp the length.
+    // Whatever is left of an empty or all-junk name falls back to "Cow <n>".
+    std::string sanitizePlayerName(const std::string &raw, uint32_t netId)
+    {
+        std::string out;
+        out.reserve(net::kMaxPlayerNameLen);
+        bool pendingSpace = false;
+        for (unsigned char c : raw)
+        {
+            if (c == ' ' || c == '\t')
+            {
+                pendingSpace = !out.empty();
+                continue;
+            }
+            if (c < 0x21 || c > 0x7E)
+                continue;
+            if (pendingSpace && out.size() < net::kMaxPlayerNameLen)
+            {
+                out.push_back(' ');
+                pendingSpace = false;
+            }
+            if (out.size() >= net::kMaxPlayerNameLen)
+                break;
+            out.push_back(static_cast<char>(c));
+        }
+        if (out.empty())
+            out = "Cow " + std::to_string(netId - net::kPlayerNetIdBase + 1);
+        return out;
+    }
+}
+
 GameServer::GameServer() = default;
 
 GameServer::~GameServer()
@@ -93,7 +129,7 @@ void GameServer::spawnPlayer(Session &s)
     s.spawned = true;
 
     std::cout << "GameServer: spawned player netId=" << s.netId
-              << " (players=" << sessions_.size() << ")\n";
+              << " '" << s.name << "' (players=" << sessions_.size() << ")\n";
 }
 
 void GameServer::despawnPlayer(Session &s)
@@ -166,6 +202,7 @@ void GameServer::onMessage(uint32_t session, const net::Message &msg)
             }
 
             s.netId = net::kPlayerNetIdBase + (nextPlayerIdx_++);
+            s.name = sanitizePlayerName(hello->name, s.netId);
             spawnPlayer(s);
             if (send_)
             {
@@ -174,10 +211,18 @@ void GameServer::onMessage(uint32_t session, const net::Message &msg)
                 w.sceneId = 0;
                 w.tickRate = tickRate_;
                 send_(session, w);
-                // Announce the newcomer to the others.
                 for (auto &[id, other] : sessions_)
-                    if (id != session)
-                        send_(id, net::PlayerJoin{s.netId});
+                {
+                    if (id == session)
+                        continue;
+                    // Announce the newcomer to the others...
+                    send_(id, net::PlayerJoin{s.netId, s.name});
+                    // ...and the others to the newcomer, which otherwise only
+                    // meets them through snapshots and would have no name to
+                    // put on their avatars.
+                    if (other.spawned)
+                        send_(session, net::PlayerJoin{other.netId, other.name});
+                }
                 // Replay existing spawned objects so this client can build them.
                 for (const auto &spawn : spawnedObjects_)
                     send_(session, spawn);

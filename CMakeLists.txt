@@ -62,6 +62,7 @@ set(SOURCES
     src/ecs/ComponentOps.cpp
     src/ecs/systems/PhysicsSyncSystem.cpp
     src/ecs/systems/RenderSystem.cpp
+    src/ecs/systems/NametagSystem.cpp
     src/ecs/systems/ScriptSystem.cpp
     src/ecs/systems/PlayerInputSystem.cpp
     src/ecs/systems/LocalInputSystem.cpp
@@ -71,11 +72,20 @@ set(SOURCES
     src/platform/Window.cpp
     src/app/Application.cpp
     src/render/PostFX.cpp
+    src/render/TextRenderer.cpp
     src/script/CowScript.cpp
     src/script/ScriptHost.cpp
     src/net/Protocol.cpp
     src/net/NetClient.cpp
 )
+
+# The one font TextRenderer rasterises its glyph atlas from. Unlike the rest of
+# engine_assets/ (editor-only), this ships with EVERY rendering target — a game
+# build draws player nametags with it — so each target below stages this single
+# file at the same relative path the engine looks it up under.
+set(ENGINE_FONT_DIR "engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf")
+set(ENGINE_FONT_FILE "JetBrainsMono-Regular.ttf")
+set(ENGINE_FONT_PATH "${ENGINE_FONT_DIR}/${ENGINE_FONT_FILE}")
 
 # Editor-only sources: compiled and linked ONLY when ENGINE_WITH_EDITOR=1.
 # Everything here either draws the editor UI, drives the Build/packaging
@@ -208,6 +218,21 @@ if(BUILD_SERVER)
     target_include_directories(cowengine_script_spawn_test PRIVATE
         ${CMAKE_SOURCE_DIR}/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
     target_link_libraries(cowengine_script_spawn_test PRIVATE
+        glm::glm nlohmann_json::nlohmann_json
+        BulletDynamics BulletCollision LinearMath EnTT::EnTT)
+
+    # Headless test for server-side player names: sanitisation of the name in a
+    # ClientHello and who gets told about whom — see test/server_names_test.cpp.
+    add_executable(cowengine_server_names_test
+        ${SIM_SOURCES}
+        src/server/GameServer.cpp
+        test/server_names_test.cpp
+    )
+    target_compile_definitions(cowengine_server_names_test PRIVATE
+        ENGINE_HEADLESS=1 ENGINE_WITH_EDITOR=0 GLM_ENABLE_EXPERIMENTAL)
+    target_include_directories(cowengine_server_names_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
+    target_link_libraries(cowengine_server_names_test PRIVATE
         glm::glm nlohmann_json::nlohmann_json
         BulletDynamics BulletCollision LinearMath EnTT::EnTT)
 
@@ -344,6 +369,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/scripts $<TARGET_FILE_DIR:CowEngine>/scripts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/models $<TARGET_FILE_DIR:CowEngine>/models
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/${ENGINE_FONT_PATH} $<TARGET_FILE_DIR:CowEngine>/${ENGINE_FONT_PATH}
     )
 
     # `cmake --install` lays down a redistributable folder containing the exe
@@ -355,8 +382,10 @@ if(NOT EMSCRIPTEN)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/models/      DESTINATION models)
     if(NOT BUILD_GAME)
         # The editor build still needs the engine asset folder (fonts, icons,
-        # editor scripts). The standalone game build does not load these.
+        # editor scripts). The standalone game build only needs the text font.
         install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine_assets/ DESTINATION engine_assets)
+    else()
+        install(FILES ${CMAKE_SOURCE_DIR}/${ENGINE_FONT_PATH} DESTINATION ${ENGINE_FONT_DIR})
     endif()
 
     # ===== Embedded game template (native editor only) =====
@@ -393,6 +422,8 @@ if(NOT EMSCRIPTEN)
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/scenes       ${GAME_TEMPLATE_DIR}/scenes
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/scripts      ${GAME_TEMPLATE_DIR}/scripts
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/models       ${GAME_TEMPLATE_DIR}/models
+            COMMAND ${CMAKE_COMMAND} -E copy
+                ${CMAKE_SOURCE_DIR}/${ENGINE_FONT_PATH} ${GAME_TEMPLATE_DIR}/${ENGINE_FONT_PATH}
             VERBATIM)
 
         # bin2c is a tiny C++17 host tool — built with the same compiler as
@@ -538,14 +569,16 @@ if(EMSCRIPTEN)
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/shaders@/shaders")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/models@/models")
     list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/scripts@/scripts")
+    # The bundled JetBrainsMono download has 7.5MB of TTF variants + 2MB of
+    # webfonts, so weights are listed one at a time rather than preloading the
+    # folder. The regular weight goes into every web target — TextRenderer bakes
+    # its glyph atlas from it; the editor adds two more for its ImGui UI.
+    set(_jb_ttf "${CMAKE_SOURCE_DIR}/${ENGINE_FONT_DIR}")
+    set(_mount "/${ENGINE_FONT_DIR}")
+    list(APPEND WEB_LINK_FLAGS "--preload-file" "${_jb_ttf}/${ENGINE_FONT_FILE}@${_mount}/${ENGINE_FONT_FILE}")
     if(NOT BUILD_GAME)
-        # Editor needs help docs plus a slim slice of engine_assets. The bundled
-        # JetBrainsMono download has 7.5MB of TTF variants + 2MB of webfonts; we
-        # only load three weights, so list them explicitly. Same idea for icons.
+        # Editor also needs help docs and a slim slice of icons.
         list(APPEND WEB_LINK_FLAGS "--preload-file" "${CMAKE_SOURCE_DIR}/src/templates/help.md@/src/templates/help.md")
-        set(_jb_ttf "${CMAKE_SOURCE_DIR}/engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf")
-        set(_mount "/engine_assets/fonts/JetBrainsMono-2.304/fonts/ttf")
-        list(APPEND WEB_LINK_FLAGS "--preload-file" "${_jb_ttf}/JetBrainsMono-Regular.ttf@${_mount}/JetBrainsMono-Regular.ttf")
         list(APPEND WEB_LINK_FLAGS "--preload-file" "${_jb_ttf}/JetBrainsMono-Bold.ttf@${_mount}/JetBrainsMono-Bold.ttf")
         list(APPEND WEB_LINK_FLAGS "--preload-file" "${_jb_ttf}/JetBrainsMono-SemiBold.ttf@${_mount}/JetBrainsMono-SemiBold.ttf")
         set(_icons "${CMAKE_SOURCE_DIR}/engine_assets/icons/png")

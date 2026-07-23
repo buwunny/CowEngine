@@ -80,23 +80,22 @@ public:
     // Cached on first use; vertex data is immutable once uploaded.
     const glm::vec3 &getLocalCenter() const
     {
-        if (!centerCached)
-        {
-            const int stride = std::max(1, floats_per_vertex);
-            if (vertices.size() >= static_cast<size_t>(stride) && stride >= 3)
-            {
-                glm::vec3 lo(vertices[0], vertices[1], vertices[2]), hi = lo;
-                for (size_t i = stride; i + 3 <= vertices.size(); i += stride)
-                {
-                    glm::vec3 p(vertices[i], vertices[i + 1], vertices[i + 2]);
-                    lo = glm::min(lo, p);
-                    hi = glm::max(hi, p);
-                }
-                localCenter = (lo + hi) * 0.5f;
-            }
-            centerCached = true;
-        }
+        ensureBounds();
         return localCenter;
+    }
+
+    // Corners of the same local bounding box. Anything that has to sit *on* or
+    // *above* a mesh — a floating nametag, a spawn placement — needs the extent,
+    // not just the centre, because the origin tells it nothing about the height.
+    const glm::vec3 &getLocalMin() const
+    {
+        ensureBounds();
+        return localMin;
+    }
+    const glm::vec3 &getLocalMax() const
+    {
+        ensureBounds();
+        return localMax;
     }
 
 protected:
@@ -110,8 +109,31 @@ protected:
     int floats_per_vertex = 3;
 
 private:
+    void ensureBounds() const
+    {
+        if (boundsCached)
+            return;
+        const int stride = std::max(1, floats_per_vertex);
+        if (vertices.size() >= static_cast<size_t>(stride) && stride >= 3)
+        {
+            glm::vec3 lo(vertices[0], vertices[1], vertices[2]), hi = lo;
+            for (size_t i = stride; i + 3 <= vertices.size(); i += stride)
+            {
+                glm::vec3 p(vertices[i], vertices[i + 1], vertices[i + 2]);
+                lo = glm::min(lo, p);
+                hi = glm::max(hi, p);
+            }
+            localMin = lo;
+            localMax = hi;
+            localCenter = (lo + hi) * 0.5f;
+        }
+        boundsCached = true;
+    }
+
     mutable glm::vec3 localCenter{0.0f};
-    mutable bool centerCached = false;
+    mutable glm::vec3 localMin{0.0f};
+    mutable glm::vec3 localMax{0.0f};
+    mutable bool boundsCached = false;
 };
 // Default implementation: build a line-element buffer from triangle indices and draw GL_LINES.
 inline void Mesh::renderWireframe()

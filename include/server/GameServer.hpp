@@ -50,6 +50,7 @@ private:
     {
         ecs::Entity entity = ecs::NullEntity;
         uint32_t netId = 0;
+        std::string name; // sanitised display name, broadcast in PlayerJoin
         Camera *camera = nullptr;
         net::InputCommand lastInput;
         uint32_t lastSeq = 0;
