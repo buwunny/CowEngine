@@ -234,6 +234,20 @@ Spawn functions return an **object handle** and accept an optional `(x, y, z)` p
 
 Spawned objects get a random color and are added to the live scene.
 
+### Object Lifetime
+
+| Function | Description |
+|----------|-------------|
+| `destroy(obj)` | Removes the object a handle refers to |
+| `destroy_self()` | Removes the entity the running script is attached to |
+| `attach_script(obj, path)` | Compiles `path` and attaches it to the object; returns `true` on success |
+
+`attach_script` lets a spawned object run its own behaviour, so the spawner
+doesn't have to keep a handle to it and manage it from the outside. The attached
+script's `on start()` fires on the object's next frame, and `self_*` /
+`destroy_self()` inside it act on that object. Attaching the same path twice is a
+no-op.
+
 ---
 
 ## Handle Properties
@@ -327,7 +341,9 @@ on update(dt) {
 
 ### Shoot Cows from the Camera
 
-Spawns a cow in the camera's forward direction and launches it:
+Spawns a cow in the camera's forward direction, launches it, and hands it a
+script that despawns it later. Because the lifetime lives on the cow, any number
+of shots can be in flight at once:
 
 ```
 let was_down = false
@@ -348,8 +364,26 @@ on update(dt) {
         rb.vx = cam.fx * speed
         rb.vy = cam.fy * speed
         rb.vz = cam.fz * speed
+        attach_script(cow, "scripts/despawn_after.cow")
     }
     was_down = down
+}
+```
+
+...where `scripts/despawn_after.cow` is simply:
+
+```
+let lifetime = 4
+let born = 0
+
+on start() {
+    born = time()
+}
+
+on update(dt) {
+    if (time() - born > lifetime) {
+        destroy_self()
+    }
 }
 ```
 

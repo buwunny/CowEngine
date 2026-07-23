@@ -4,6 +4,8 @@
 #include "script/ScriptHost.hpp"
 
 #include <iostream>
+#include <string>
+#include <vector>
 
 namespace ecs
 {
@@ -54,43 +56,77 @@ namespace ecs
         r.clear<ScriptComponent>();
     }
 
+    namespace
+    {
+        // Run one event over every scripted entity, tolerating scripts that change
+        // the world while they run. A .cow script can spawn an object, attach a
+        // script to one (attach_script) or destroy one (destroy/destroy_self), and
+        // all three touch the ScriptComponent pool — which invalidates view
+        // iterators and can reallocate the pool out from under a held reference.
+        // So: snapshot the entities up front, and re-look-up the component (by
+        // index, revalidating the entity) around every call.
+        void dispatch(Registry &r, ScriptHost &host, const char *event,
+                      const std::vector<cowscript::Value> &args, bool startOnly)
+        {
+            std::vector<Entity> pending;
+            pending.reserve(r.view<ScriptComponent>().size());
+            for (auto e : r.view<ScriptComponent>())
+                pending.push_back(e);
+
+            std::string path; // reused, so the copy below doesn't allocate per call
+            for (auto e : pending)
+            {
+                if (!r.valid(e) || !r.all_of<ScriptComponent>(e))
+                    continue; // destroyed, or unscripted, by an earlier script
+                host.setSelf(e);
+                for (size_t i = 0;; ++i)
+                {
+                    if (!r.valid(e))
+                        break; // the script called destroy_self()
+                    auto *sc = r.try_get<ScriptComponent>(e);
+                    if (!sc || i >= sc->scripts.size())
+                        break;
+                    auto &inst = sc->scripts[i];
+                    if (!inst.script)
+                        continue;
+
+                    // A fresh instance always gets start() before its first
+                    // update, wherever it was attached from.
+                    const bool needsStart = !inst.started;
+                    if (startOnly && !needsStart)
+                        continue;
+                    inst.started = true;
+                    path = inst.path;
+                    auto script = inst.script; // outlive a destroy during the call
+
+                    if (needsStart)
+                    {
+                        std::string err = script->callEvent("start", {});
+                        if (!err.empty())
+                            std::cerr << "ScriptSystem: '" << path << "' on start: " << err << std::endl;
+                        if (startOnly)
+                            continue;
+                        if (!r.valid(e))
+                            break;
+                    }
+                    std::string err = script->callEvent(event, args);
+                    if (!err.empty())
+                        std::cerr << "ScriptSystem: '" << path << "' on " << event << ": " << err << std::endl;
+                }
+            }
+            host.setSelf(NullEntity);
+        }
+    }
+
     void startScripts(Registry &r, ScriptHost &host)
     {
-        auto view = r.view<ScriptComponent>();
-        for (auto e : view)
-        {
-            auto &sc = view.get<ScriptComponent>(e);
-            host.setSelf(e);
-            for (auto &inst : sc.scripts)
-            {
-                if (!inst.script)
-                    continue;
-                std::string err = inst.script->callEvent("start", {});
-                if (!err.empty())
-                    std::cerr << "ScriptSystem: '" << inst.path << "' on start: " << err << std::endl;
-            }
-        }
-        host.setSelf(NullEntity);
+        dispatch(r, host, "start", {}, /*startOnly=*/true);
     }
 
     void updateScripts(Registry &r, ScriptHost &host, float dt)
     {
         std::vector<cowscript::Value> args;
         args.push_back(cowscript::Value::makeNumber(dt));
-        auto view = r.view<ScriptComponent>();
-        for (auto e : view)
-        {
-            auto &sc = view.get<ScriptComponent>(e);
-            host.setSelf(e);
-            for (auto &inst : sc.scripts)
-            {
-                if (!inst.script)
-                    continue;
-                std::string err = inst.script->callEvent("update", args);
-                if (!err.empty())
-                    std::cerr << "ScriptSystem: '" << inst.path << "' on update: " << err << std::endl;
-            }
-        }
-        host.setSelf(NullEntity);
+        dispatch(r, host, "update", args, /*startOnly=*/false);
     }
 }

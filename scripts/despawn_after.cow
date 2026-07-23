@@ -1,0 +1,19 @@
+// despawn_after.cow - a self-contained lifetime. Attach it to any object and it
+// removes itself once `lifetime` seconds have passed.
+//
+// shoot_cow.cow attaches this to every cow it fires (attach_script). Giving each
+// shot its own countdown is what lets any number of them be in the air at once:
+// the shooter no longer has to remember one cow and destroy it to make room.
+
+let lifetime = 4      // seconds this object lives before despawning
+let born = 0
+
+on start() {
+    born = time()
+}
+
+on update(dt) {
+    if (time() - born > lifetime) {
+        destroy_self()
+    }
+}

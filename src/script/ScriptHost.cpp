@@ -87,6 +87,9 @@ void ScriptHost::bindBuiltins(cowscript::Script &script)
     // args removes the entity the script is attached to.
     script.setBuiltin("destroy", [this](const std::vector<Value> &a) { return builtinDestroy(a); });
     script.setBuiltin("destroy_self", [this](const std::vector<Value> &) { return builtinDestroy({}); });
+    // attach_script(handle, "scripts/foo.cow") gives a spawned object its own
+    // behaviour, so the spawner doesn't have to keep tracking it.
+    script.setBuiltin("attach_script", [this](const std::vector<Value> &a) { return builtinAttachScript(a); });
 
     script.setBuiltin("self", [this](const std::vector<Value> &a) { return builtinSelfHandle(a); });
     script.setBuiltin("transform", [this](const std::vector<Value> &a) { return builtinTransform(a); });
@@ -334,6 +337,62 @@ Value ScriptHost::builtinDestroy(const std::vector<Value> &args)
     // destroying the entity, so no dangling rigid body is left simulating.
     sceneRef->destroyEntity(e);
     return Value::makeNull();
+}
+
+Value ScriptHost::builtinAttachScript(const std::vector<Value> &args)
+{
+    // Networked clients don't own object lifetime: spawn_* handed back an inert
+    // sink handle, and the server runs the attached script on the real entity and
+    // replicates the result. Silently doing nothing here keeps the same script
+    // correct on both ends.
+    if (!spawnEnabled || !sceneRef || args.size() < 2)
+        return Value::makeBool(false);
+
+    const Value &target = args[0];
+    if (target.type != Value::Handle ||
+        (target.str != "object" && target.str != "transform" && target.str != "rigidbody"))
+        return Value::makeBool(false);
+
+    ecs::Entity e = entityFromHandle(target);
+    auto &reg = sceneRef->registry();
+    if (e == ecs::NullEntity || !reg.valid(e))
+        return Value::makeBool(false);
+
+    std::string path = args[1].toString();
+    if (path.empty())
+        return Value::makeBool(false);
+
+    // Identity is where script paths live; everything the factories build has one.
+    auto *ident = reg.try_get<ecs::Identity>(e);
+    if (!ident)
+        return Value::makeBool(false);
+    // Idempotent: attaching the same script twice would run it twice per frame.
+    if (std::find(ident->scriptPaths.begin(), ident->scriptPaths.end(), path) != ident->scriptPaths.end())
+        return Value::makeBool(true);
+
+    std::string source = cowscript::readScriptFile(path);
+    if (source.empty())
+    {
+        log("attach_script: cannot read '" + path + "'");
+        return Value::makeBool(false);
+    }
+    auto compiled = std::make_shared<cowscript::Script>();
+    bindBuiltins(*compiled);
+    std::string err = compiled->compile(source);
+    if (!err.empty())
+    {
+        log("attach_script: compile error in '" + path + "': " + err);
+        return Value::makeBool(false);
+    }
+
+    // Recorded on Identity too, so the attachment survives a scene save and the
+    // Inspector shows it. on start() fires on the entity's first update rather
+    // than here — see ScriptInstance::started — which keeps script execution from
+    // re-entering the interpreter mid-frame.
+    ident->scriptPaths.push_back(path);
+    reg.get_or_emplace<ecs::ScriptComponent>(e).scripts.push_back(
+        ecs::ScriptInstance{path, std::move(compiled), false});
+    return Value::makeBool(true);
 }
 
 Value ScriptHost::builtinSelfHandle(const std::vector<Value> &)

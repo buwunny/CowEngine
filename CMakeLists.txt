@@ -197,6 +197,20 @@ if(BUILD_SERVER)
         glm::glm nlohmann_json::nlohmann_json
         BulletDynamics BulletCollision LinearMath EnTT::EnTT)
 
+    # Headless test for runtime script attachment (attach_script) and the
+    # per-object lifetimes it enables — see test/script_lifetime_test.cpp.
+    add_executable(cowengine_script_lifetime_test
+        ${SIM_SOURCES}
+        test/script_lifetime_test.cpp
+    )
+    target_compile_definitions(cowengine_script_lifetime_test PRIVATE
+        ENGINE_HEADLESS=1 ENGINE_WITH_EDITOR=0 GLM_ENABLE_EXPERIMENTAL)
+    target_include_directories(cowengine_script_lifetime_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include ${BULLET_INCLUDE_DIRS} /usr/include/bullet)
+    target_link_libraries(cowengine_script_lifetime_test PRIVATE
+        glm::glm nlohmann_json::nlohmann_json
+        BulletDynamics BulletCollision LinearMath EnTT::EnTT)
+
     # Server + test are the only artifacts for this configuration.
     return()
 endif()

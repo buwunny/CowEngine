@@ -1,40 +1,25 @@
 // shoot_cow.cow - attach to the Player. Press C while testing to launch a cow
-// in the direction the camera is facing. Cows don't pile up forever: each shot
-// despawns after a short lifetime, and firing again removes the previous cow.
+// in the direction the camera is facing. Fire as often as you like: every cow
+// carries its own copy of despawn_after.cow, so each one counts down and removes
+// itself independently instead of the shooter tracking a single live cow (which
+// meant a new shot had to delete the previous one).
 //
 // Demonstrates the component API: camera(), spawn_cow() returns an object handle,
-// `.rigidbody.vx` reads/writes the rigidbody's linear velocity, and destroy()
-// removes a spawned object (destroy_self() would remove the running script's own
-// entity).
+// `.rigidbody.vx` reads/writes the rigidbody's linear velocity, and
+// attach_script() gives the spawned object a behaviour of its own.
 
 let was_down = false
 let speed = 100
-let lifetime = 4      // seconds a shot cow lives before it despawns
-let cow = null        // the currently-live cow, or null when none
-let born = 0          // time() at which `cow` was spawned
 
 on update(dt) {
-    // Auto-despawn the live cow once it has been around long enough.
-    if (cow != null and time() - born > lifetime) {
-        destroy(cow)
-        cow = null
-    }
-
     let down = key("c")
     if (down and not was_down) {
-        // Keep only one cow at a time: remove the previous shot before firing.
-        if (cow != null) {
-            destroy(cow)
-            cow = null
-        }
-
         let cam = camera()
         let ox = cam.x + cam.fx * 2
         let oy = cam.y + cam.fy * 2
         let oz = cam.z + cam.fz * 2
 
-        cow = spawn_cow(ox, oy, oz)
-        born = time()
+        let cow = spawn_cow(ox, oy, oz)
         cow.sx = 0.1
         cow.sy = 0.1
         cow.sz = 0.1
@@ -42,6 +27,9 @@ on update(dt) {
         rb.vx = cam.fx * speed
         rb.vy = cam.fy * speed
         rb.vz = cam.fz * speed
+
+        // The cow owns its own lifetime from here — see despawn_after.cow.
+        attach_script(cow, "scripts/despawn_after.cow")
     }
     was_down = down
 }

@@ -91,6 +91,10 @@ namespace ecs
     {
         std::string path;
         std::shared_ptr<cowscript::Script> script;
+        // Whether on start() has run. Scripts attached mid-session (attach_script)
+        // miss the one startScripts() call, so updateScripts() starts any instance
+        // that is still false before its first update.
+        bool started = false;
     };
 
     // Holds every compiled script attached to an entity, parallel to (but

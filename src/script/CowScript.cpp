@@ -1311,6 +1311,7 @@ namespace cowscript
             "self_apply_impulse", "self_apply_force", "self_set_velocity",
             "self_on_ground",
             "spawn_cube", "spawn_cow", "spawn_plane",
+            "destroy", "destroy_self", "attach_script",
             "self", "transform", "rigidbody", "camera",
             "transform_of", "rigidbody_of",
         };
