@@ -83,6 +83,10 @@ R"html(<!doctype html>
         // the C++ localStorage mechanism picks them up without any EM_ASM global
         // reads. Scripts and models are seeded the same way as the scene so the
         // exported game's restoreAssetsFromLocalStorage() finds the latest edits.
+        // Unprefixed keys on purpose: this shell carries no CowNet shim, so every
+        // export from here is single-player and Scene::storageKey() resolves to
+        // exactly these names. Adding multiplayer to this template means seeding
+        // the 'cowengine_mp_' keys instead.
         if (typeof __COWENGINE_SCENE__ === 'string' && __COWENGINE_SCENE__) {
             try { localStorage.setItem('cowengine_save', __COWENGINE_SCENE__); } catch(e) {}
         }

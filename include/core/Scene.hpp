@@ -42,6 +42,16 @@ public:
     static void snapshotModelsToLocalStorage();
     static void restoreAssetsFromLocalStorage();
 
+    // Full browser-localStorage key for one of the persisted blobs ("save",
+    // "scripts", "models"). The editor, the web game and any exported game all
+    // share one origin, so the keys are namespaced per session mode: a
+    // multiplayer session uses "cowengine_mp_*" and therefore never inherits the
+    // scene an editor/singleplayer session left behind. Loading a foreign scene
+    // in multiplayer left objects the server has no netId for frozen on screen —
+    // rendered, but never simulated or updated. Native builds always get the
+    // singleplayer keys (the string is unused off the web).
+    static std::string storageKey(const char *name);
+
     // Returns the entity hit by a world-space ray, or NullEntity if nothing hit.
     ecs::Entity raycast(const glm::vec3 &origin, const glm::vec3 &direction, float maxDistance);
 

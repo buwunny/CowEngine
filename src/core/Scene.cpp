@@ -36,16 +36,19 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
-EM_JS(void, saveToLocalStorage, (const char *data), {
-    localStorage.setItem('cowengine_save', UTF8ToString(data));
-});
-
 EM_JS(void, em_local_storage_set, (const char *key, const char *data), {
     try { localStorage.setItem(UTF8ToString(key), UTF8ToString(data)); }
     catch (e) { console.warn('localStorage.setItem failed for', UTF8ToString(key), e); }
 });
 
-EM_JS(void, em_restore_assets_to_fs, (), {
+// True when this page resolved a multiplayer server (see the CowNet shim in
+// GameTemplate.html). The editor shell has no CowNet at all, and the join gate's
+// ?singleplayer=1 leaves the config empty, so both read as single-player.
+EM_JS(int, em_multiplayer_session, (), {
+    return (window.CowNet && window.CowNet.hasServer()) ? 1 : 0;
+});
+
+EM_JS(void, em_restore_assets_to_fs, (const char *scriptsKey, const char *modelsKey), {
     function restoreKey(key) {
         var raw = null;
         try { raw = localStorage.getItem(key); } catch (e) { return; }
@@ -69,8 +72,8 @@ EM_JS(void, em_restore_assets_to_fs, (), {
             catch (e) { console.error("cowengine: FS.writeFile failed for", abs, e); }
         }
     }
-    restoreKey('cowengine_scripts');
-    restoreKey('cowengine_models');
+    restoreKey(UTF8ToString(scriptsKey));
+    restoreKey(UTF8ToString(modelsKey));
 });
 #endif
 
@@ -405,7 +408,7 @@ bool Scene::saveToJSON(const std::string &path)
     out << j.dump(4);
 
 #ifdef __EMSCRIPTEN__
-    saveToLocalStorage(j.dump().c_str());
+    em_local_storage_set(storageKey("save").c_str(), j.dump().c_str());
     snapshotScriptsToLocalStorage();
     snapshotModelsToLocalStorage();
 #endif
@@ -446,12 +449,24 @@ namespace
 #endif
 }
 
+std::string Scene::storageKey(const char *name)
+{
+#ifdef __EMSCRIPTEN__
+    // CowNet resolves its config in an inline script that runs before the wasm
+    // module loads, so this answer is fixed for the lifetime of the page.
+    static const bool multiplayer = em_multiplayer_session() != 0;
+    if (multiplayer)
+        return std::string("cowengine_mp_") + name;
+#endif
+    return std::string("cowengine_") + name;
+}
+
 void Scene::snapshotScriptsToLocalStorage()
 {
 #ifdef __EMSCRIPTEN__
     std::string blob = snapshotDirectory("scripts", ".cow");
     if (!blob.empty())
-        em_local_storage_set("cowengine_scripts", blob.c_str());
+        em_local_storage_set(storageKey("scripts").c_str(), blob.c_str());
 #endif
 }
 
@@ -460,14 +475,14 @@ void Scene::snapshotModelsToLocalStorage()
 #ifdef __EMSCRIPTEN__
     std::string blob = snapshotDirectory("models", ".obj");
     if (!blob.empty())
-        em_local_storage_set("cowengine_models", blob.c_str());
+        em_local_storage_set(storageKey("models").c_str(), blob.c_str());
 #endif
 }
 
 void Scene::restoreAssetsFromLocalStorage()
 {
 #ifdef __EMSCRIPTEN__
-    em_restore_assets_to_fs();
+    em_restore_assets_to_fs(storageKey("scripts").c_str(), storageKey("models").c_str());
 #endif
 }
 

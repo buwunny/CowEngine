@@ -106,14 +106,18 @@ void Application::init()
     // For game builds: kGameHtmlTemplate writes the exported scene to localStorage
     // ('cowengine_save') synchronously before CowEngine.js loads, so we find it here.
     // For editor builds: this restores the scene from the last editor save.
+    // A multiplayer session reads its own key (see Scene::storageKey) and so
+    // normally finds nothing here, falling through to the baked scenes/scene.json
+    // that the server loaded too — the two worlds have to agree.
+    const std::string saveKey = Scene::storageKey("save");
     EM_ASM({
-        var data = localStorage.getItem('cowengine_save');
+        var data = localStorage.getItem(UTF8ToString($0));
         if (data)
         {
             Module.ccall('app_set_has_local_storage_data', null, ['number'], [1]);
             Module.ccall('app_set_saved_data', null, ['string'], [data]);
         }
-    });
+    }, saveKey.c_str());
     if (hasLocalStorageData)
         sceneLoaded = scene->loadFromString(pendingLocalStorageData);
 #endif
