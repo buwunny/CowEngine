@@ -213,12 +213,21 @@ static double getTimeSeconds()
 
 void Application::tick()
 {
+    double current = getTimeSeconds();
+    float delta = static_cast<float>(current - lastFrame);
+    lastFrame = current;
+
+    // FPS bookkeeping
+    fpsCount++;
+    fpsTimer += delta;
+    if (fpsTimer >= 0.5)
+    {
+        displayFps = static_cast<float>(fpsCount / fpsTimer);
+        fpsCount = 0;
+        fpsTimer = 0.0;
+    }
 #if !ENGINE_WITH_EDITOR
     {
-        double current = getTimeSeconds();
-        float delta = static_cast<float>(current - lastFrame);
-        lastFrame = current;
-
         int width = 0, height = 0;
 #ifdef __EMSCRIPTEN__
         emscripten_get_canvas_element_size("canvas", &width, &height);
@@ -259,6 +268,8 @@ void Application::tick()
 
         postfx->compositeTo(0, 0, 0, width, height, gameVfx, static_cast<float>(scriptTime));
 
+        text->drawScreen("FPS: " + std::to_string(static_cast<int>(displayFps)), 10.0f, 10.0f, 16.0f, glm::vec4(1.0f), width, height);
+
         window->update();
         return;
     }
@@ -266,19 +277,6 @@ void Application::tick()
 
     // Hot-reload
     scene->checkReload();
-
-    double current = getTimeSeconds();
-    float delta = static_cast<float>(current - lastFrame);
-    lastFrame = current;
-
-    // FPS bookkeeping
-    fpsCount++;
-    fpsTimer += delta;
-    if (fpsTimer >= 0.5)
-    {
-        fpsCount = 0;
-        fpsTimer = 0.0;
-    }
 
     bool testingMode = editorUI && editorUI->isTestingMode();
     if (testingMode != lastTestingMode)

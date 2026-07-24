@@ -100,6 +100,7 @@ private:
     // FPS accounting for desktop builds
     int fpsCount = 0;
     double fpsTimer = 0.0;
+    float displayFps = 0.0f;
     bool lastRPressed = false;
     bool lastTestingMode = false;
 #ifdef __EMSCRIPTEN__
